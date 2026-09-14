@@ -85,6 +85,8 @@ export const NewRoutineModal: React.FC = () => {
     exercises,
     routines,
     folders,
+    isDelegatedMode,
+    selectedClient,
     addRoutine,
     updateRoutine,
     deleteRoutine,
@@ -615,6 +617,18 @@ export const NewRoutineModal: React.FC = () => {
         contentContainerStyle={styles.scrollContainer}
         showsVerticalScrollIndicator={false}
       >
+        {/* Banner Delega Cliente */}
+        {isDelegatedMode && selectedClient && (
+          <View style={styles.delegationModalBanner}>
+            <Text style={styles.delegationModalBannerTitle}>
+              🔄 Creazione Scheda in Delega per: {selectedClient.name}
+            </Text>
+            <Text style={styles.delegationModalBannerSub}>
+              Questa scheda verrà salvata per il cliente (owner_id: {selectedClient.id})
+            </Text>
+          </View>
+        )}
+
         {/* Scheda Info & Configuration Card */}
         <Card style={[styles.formCard, { borderLeftColor: selectedBorderColor, borderLeftWidth: 4 }]}>
           <View style={styles.inputGroup}>
@@ -2089,6 +2103,25 @@ const styles = StyleSheet.create({
   bandMiniChipTextActive: {
     color: '#0F172A',
     fontWeight: '800',
+  },
+  delegationModalBanner: {
+    backgroundColor: 'rgba(236, 72, 153, 0.15)',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#EC4899',
+  },
+  delegationModalBannerTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#EC4899',
+    marginBottom: 2,
+  },
+  delegationModalBannerSub: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    lineHeight: 15,
   },
 });
 

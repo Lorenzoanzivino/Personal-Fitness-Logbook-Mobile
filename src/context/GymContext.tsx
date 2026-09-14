@@ -8,6 +8,7 @@ import {
   RoutineFolder,
   SetDropStep,
 } from '../types/workout';
+import { UserProfile, UserRole, ClientAssociation } from '../types/profile';
 import { gymStorage } from '../services/gymStorage';
 import { profileService } from '../services/profileService';
 
@@ -52,9 +53,19 @@ export interface PreviousPerformanceDetails {
 interface GymContextType {
   exercises: Exercise[];
   routines: WorkoutRoutine[];
+  allRoutines: WorkoutRoutine[];
   workouts: Workout[];
   folders: RoutineFolder[];
+  allFolders: RoutineFolder[];
   loading: boolean;
+
+  // RBAC & Delegation State
+  userRole: UserRole;
+  userProfile: UserProfile;
+  selectedClient: ClientAssociation | null;
+  setSelectedClient: (client: ClientAssociation | null) => void;
+  activeOwnerId: string;
+  isDelegatedMode: boolean;
 
   // Exercise actions
   addExercise: (data: {
@@ -132,6 +143,63 @@ export const GymProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [workouts, setWorkouts] = useState<Workout[]>([]);
   const [folders, setFolders] = useState<RoutineFolder[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // RBAC & Delegation State
+  const [userProfile, setUserProfile] = useState<UserProfile>(profileService.getCurrentProfile());
+  const [selectedClient, setSelectedClient] = useState<ClientAssociation | null>(null);
+
+  useEffect(() => {
+    const unsub = profileService.subscribe((p) => {
+      setUserProfile(p);
+      if (p.role === 'CLIENT') {
+        setSelectedClient(null);
+      }
+    });
+    return () => unsub();
+  }, []);
+
+  const userRole: UserRole = userProfile.role;
+  const isDelegatedMode = Boolean(userRole === 'TRAINER' && selectedClient !== null);
+
+  const activeOwnerId: string =
+    userRole === 'CLIENT'
+      ? String(userProfile.id || 'client-simona-1')
+      : selectedClient
+      ? selectedClient.id
+      : String(userProfile.id || 'trainer-marco-1');
+
+  // Filter routines by active context (RBAC & Delega)
+  const filteredRoutines = routines.filter((r) => {
+    if (userRole === 'TRAINER') {
+      if (selectedClient) {
+        return r.owner_id === selectedClient.id;
+      }
+      return !r.owner_id || r.owner_id === 'trainer-marco-1' || r.owner_id === userProfile.id;
+    } else {
+      return (
+        r.owner_id === activeOwnerId ||
+        r.owner_id === 'client-simona-1' ||
+        r.owner_id === userProfile.id
+      );
+    }
+  });
+
+  // Filter folders by active context
+  const filteredFolders = folders.filter((f) => {
+    if (userRole === 'TRAINER') {
+      if (selectedClient) {
+        return f.owner_id === selectedClient.id;
+      }
+      return !f.owner_id || f.owner_id === 'trainer-marco-1' || f.owner_id === userProfile.id;
+    } else {
+      return (
+        !f.owner_id ||
+        f.owner_id === activeOwnerId ||
+        f.owner_id === 'client-simona-1' ||
+        f.owner_id === userProfile.id
+      );
+    }
+  });
 
   useEffect(() => {
     loadAllGymData();
@@ -283,8 +351,11 @@ export const GymProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     data: Omit<WorkoutRoutine, 'id' | 'created_at' | 'updated_at'>
   ): Promise<WorkoutRoutine> => {
     const trimmedName = data.name.trim();
+    const targetOwnerId = data.owner_id || activeOwnerId;
     const duplicate = routines.find(
-      (r) => r.name.trim().toLowerCase() === trimmedName.toLowerCase()
+      (r) =>
+        (r.owner_id || 'trainer-marco-1') === targetOwnerId &&
+        r.name.trim().toLowerCase() === trimmedName.toLowerCase()
     );
     if (duplicate) {
       throw new Error(`Esiste già una scheda con il nome "${trimmedName}". Scegli un nome diverso.`);
@@ -296,6 +367,7 @@ export const GymProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       ...data,
       name: trimmedName,
       id: newId,
+      owner_id: targetOwnerId,
       created_at: now,
       updated_at: now,
     };
@@ -353,12 +425,17 @@ export const GymProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const addFolder = async (name: string): Promise<RoutineFolder> => {
     const trimmed = name.trim();
     if (!trimmed) throw new Error('Il nome della cartella non può essere vuoto.');
-    const existing = folders.find((f) => f.name.toLowerCase() === trimmed.toLowerCase());
+    const existing = folders.find(
+      (f) =>
+        (f.owner_id || 'trainer-marco-1') === activeOwnerId &&
+        f.name.toLowerCase() === trimmed.toLowerCase()
+    );
     if (existing) return existing;
 
     const newFolder: RoutineFolder = {
       id: `folder-${Date.now()}`,
       name: trimmed,
+      owner_id: activeOwnerId,
       created_at: new Date().toISOString(),
     };
     const updated = [...folders, newFolder];
@@ -592,10 +669,18 @@ export const GymProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     <GymContext.Provider
       value={{
         exercises,
-        routines,
+        routines: filteredRoutines,
+        allRoutines: routines,
         workouts,
-        folders,
+        folders: filteredFolders,
+        allFolders: folders,
         loading,
+        userRole,
+        userProfile,
+        selectedClient,
+        setSelectedClient,
+        activeOwnerId,
+        isDelegatedMode,
         addExercise,
         updateExercise,
         archiveExercise,

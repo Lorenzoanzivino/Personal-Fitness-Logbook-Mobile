@@ -6,6 +6,7 @@ import { NavigationContainer, DarkTheme } from '@react-navigation/native';
 import { RootStackNavigator } from './src/navigation';
 import { Header } from './src/components';
 import { colors } from './src/theme/colors';
+import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { GymProvider } from './src/context/GymContext';
 import { MeasurementProvider } from './src/context/MeasurementContext';
 import { DietProvider } from './src/context/DietContext';
@@ -23,24 +24,40 @@ const customDarkTheme = {
   },
 };
 
+function AppContent() {
+  const { isAuthenticated } = useAuth();
+
+  return (
+    <SafeAreaView
+      style={[
+        styles.safeArea,
+        { backgroundColor: isAuthenticated ? colors.primary : colors.background },
+      ]}
+      edges={['top']}
+    >
+      <StatusBar style="light" />
+      <View style={styles.container}>
+        {isAuthenticated && <Header />}
+        <NavigationContainer theme={customDarkTheme}>
+          <RootStackNavigator />
+        </NavigationContainer>
+      </View>
+    </SafeAreaView>
+  );
+}
+
 export default function App() {
   return (
     <SafeAreaProvider>
-      <SafeAreaView style={styles.safeArea} edges={['top']}>
-        <StatusBar style="light" />
+      <AuthProvider>
         <GymProvider>
           <MeasurementProvider>
             <DietProvider>
-              <View style={styles.container}>
-                <Header />
-                <NavigationContainer theme={customDarkTheme}>
-                  <RootStackNavigator />
-                </NavigationContainer>
-              </View>
+              <AppContent />
             </DietProvider>
           </MeasurementProvider>
         </GymProvider>
-      </SafeAreaView>
+      </AuthProvider>
     </SafeAreaProvider>
   );
 }

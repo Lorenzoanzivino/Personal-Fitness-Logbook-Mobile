@@ -4,3 +4,4 @@ export * from './workout';
 export * from './measurement';
 export * from './diet';
 export * from './navigation';
+export * from './auth';

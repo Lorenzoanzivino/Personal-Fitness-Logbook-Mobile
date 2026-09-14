@@ -42,6 +42,11 @@ export const GymScreen: React.FC = () => {
     routines,
     workouts,
     folders,
+    userRole,
+    userProfile,
+    selectedClient,
+    setSelectedClient,
+    isDelegatedMode,
     deleteRoutine,
     deleteMultipleRoutines,
     clearAllRoutines,
@@ -293,6 +298,10 @@ export const GymScreen: React.FC = () => {
 
   // Folder Multi-Select Handlers
   const handleFolderLongPress = (folderId: string) => {
+    if (userRole === 'CLIENT') {
+      showToast('info', 'La gestione delle cartelle è riservata al Personal Trainer.');
+      return;
+    }
     if (!folderSelectMode) {
       setFolderSelectMode(true);
       setSelectedFolderIds([folderId]);
@@ -307,53 +316,53 @@ export const GymScreen: React.FC = () => {
     );
   };
 
+  const handleSelectAllFolders = () => {
+    setSelectedFolderIds(folders.map((f) => f.id));
+  };
+
   const handleDeleteSelectedFoldersConfirm = () => {
     if (selectedFolderIds.length === 0) return;
-    const count = selectedFolderIds.length;
     setConfirmModal({
       visible: true,
       title: 'Elimina Cartelle Selezionate',
-      message: `Sei sicuro di voler eliminare le ${count} cartelle selezionate? Le schede al loro interno non verranno eliminate, ma saranno visibili nella vista "Tutte".`,
-      confirmText: `Elimina (${count})`,
+      message: `Vuoi davvero eliminare ${selectedFolderIds.length} cartelle? Le schede associate non verranno cancellate ma spostate in 'Tutte'.`,
+      confirmText: 'Elimina',
       isDestructive: true,
       onConfirm: async () => {
         try {
           await deleteMultipleFolders(selectedFolderIds);
-          if (selectedFolderIds.includes(selectedFolderFilter)) {
-            setSelectedFolderFilter('all');
-          }
-          setSelectedFolderIds([]);
           setFolderSelectMode(false);
+          setSelectedFolderIds([]);
+          setSelectedFolderFilter('all');
           setConfirmModal((prev) => ({ ...prev, visible: false }));
-          showToast('success', `${count} cartelle eliminate con successo.`);
+          showToast('success', `${selectedFolderIds.length} cartelle eliminate con successo.`);
         } catch {
           setConfirmModal((prev) => ({ ...prev, visible: false }));
-          showToast('error', "Errore durante l'eliminazione delle cartelle.");
+          showToast('error', 'Errore durante l\'eliminazione delle cartelle.');
         }
       },
     });
   };
 
   const handleClearAllFoldersConfirm = () => {
-    if (folders.length === 0) return;
     setConfirmModal({
       visible: true,
-      title: '⚠️ Svuota Tutte le Cartelle',
-      message: `ATTENZIONE: Vuoi davvero eliminare TUTTE le ${folders.length} cartelle create? Le schede di allenamento NON verranno eliminate, ma rimarranno visibili nella vista "Tutte" (l'unica cartella che non può essere eliminata).`,
-      confirmText: 'Svuota Tutte le Cartelle',
+      title: 'Svuota Tutte le Cartelle',
+      message:
+        "Vuoi davvero eliminare TUTTE le cartelle create? Rimarrà solo la vista fissa 'Tutte'. Le schede non verranno cancellate.",
+      confirmText: 'Svuota Tutto',
       isDestructive: true,
       onConfirm: async () => {
         try {
           await clearAllFolders();
-          setSelectedFolderFilter('all');
-          setSelectedFolderIds([]);
           setFolderSelectMode(false);
-          setShowFolderModal(false);
+          setSelectedFolderIds([]);
+          setSelectedFolderFilter('all');
           setConfirmModal((prev) => ({ ...prev, visible: false }));
-          showToast('success', 'Tutte le cartelle sono state eliminate. Le schede sono conservate in "Tutte".');
+          showToast('success', 'Tutte le cartelle sono state eliminate.');
         } catch {
           setConfirmModal((prev) => ({ ...prev, visible: false }));
-          showToast('error', "Errore durante lo svuotamento delle cartelle.");
+          showToast('error', 'Errore durante lo svuotamento delle cartelle.');
         }
       },
     });
@@ -361,6 +370,10 @@ export const GymScreen: React.FC = () => {
 
   // Routine Multi-Select Handlers
   const handleRoutineLongPress = (id: number) => {
+    if (userRole === 'CLIENT') {
+      showToast('info', 'Come Cliente puoi avviare ed eseguire la scheda ma non eliminarla.');
+      return;
+    }
     if (!routineSelectMode) {
       setRoutineSelectMode(true);
       setSelectedRoutineIds([id]);
@@ -490,6 +503,103 @@ export const GymScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
+      {/* RBAC Header: Trainer Delegation Switcher OR Client Status Banner */}
+      {userRole === 'TRAINER' ? (
+        <View style={styles.delegationBar}>
+          <View style={styles.delegationHeaderRow}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Text style={styles.delegationCaption}>GESTIONE SCHEDE:</Text>
+              <Text style={styles.delegationRoleBadge}>TRAINER</Text>
+            </View>
+            {isDelegatedMode && (
+              <Pressable
+                onPress={() => setSelectedClient(null)}
+                style={styles.exitDelegationBtn}
+                accessibilityRole="button"
+                accessibilityLabel="Torna alle mie schede personali"
+              >
+                <Text style={styles.exitDelegationBtnText}>✕ Torna a Personali</Text>
+              </Pressable>
+            )}
+          </View>
+
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.delegationChipsContainer}
+          >
+            {/* Chip Personale Trainer */}
+            <Pressable
+              onPress={() => setSelectedClient(null)}
+              style={[
+                styles.delegationChip,
+                !selectedClient && styles.delegationChipActive,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.delegationChipText,
+                  !selectedClient && styles.delegationChipTextActive,
+                ]}
+              >
+                👤 Le Mie Schede
+              </Text>
+            </Pressable>
+
+            {/* Chips Clienti */}
+            {(userProfile.clients || []).map((client) => {
+              const isSelected = selectedClient?.id === client.id;
+              return (
+                <Pressable
+                  key={client.id}
+                  onPress={() => setSelectedClient(client)}
+                  style={[
+                    styles.delegationChip,
+                    isSelected && styles.delegationChipActiveClient,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.delegationChipText,
+                      isSelected && styles.delegationChipTextActiveClient,
+                    ]}
+                  >
+                    👤 {client.name} (Cliente)
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+
+          {/* Banner Modalità Delega Attiva */}
+          {isDelegatedMode && selectedClient && (
+            <View style={styles.delegationActiveBanner}>
+              <Text style={styles.delegationActiveTitle}>
+                🔄 MODALITÀ DELEGA: {selectedClient.name}
+              </Text>
+              <Text style={styles.delegationActiveDesc}>
+                Stai creando e modificando le schede per questa cliente. Le schede salvate avranno
+                owner_id: {selectedClient.id} e saranno sincronizzate sulla sua app.
+              </Text>
+            </View>
+          )}
+        </View>
+      ) : (
+        <View style={styles.clientModeBanner}>
+          <View style={styles.clientModeHeader}>
+            <View style={styles.clientModeBadge}>
+              <Text style={styles.clientModeBadgeText}>🏃 ATLETA / CLIENTE</Text>
+            </View>
+            <Text style={styles.clientModeSubtext}>Sola Lettura & Esecuzione</Text>
+          </View>
+          <Text style={styles.clientModeDesc}>
+            {userProfile.trainer_name
+              ? `Schede sincronizzate dal tuo Personal Trainer: ${userProfile.trainer_name}. Seleziona una scheda e tocca "Avvia Live Logger" per registrare i tuoi allenamenti.`
+              : 'Visualizza le tue schede ed esegui i tuoi allenamenti. Vai nel Profilo per collegare il tuo Personal Trainer tramite codice OTP.'}
+          </Text>
+        </View>
+      )}
+
       {/* Sub-Tab Navigation Header */}
       <View style={styles.subTabHeader}>
         <ScrollView
@@ -582,28 +692,34 @@ export const GymScreen: React.FC = () => {
                   Struttura mesocicli (Builder separato dal Logger)
                 </Text>
               </View>
-              <Pressable
-                onPress={() => navigation.navigate('NewRoutineModal')}
-                style={styles.actionBtnPrimary}
-                accessibilityRole="button"
-                accessibilityLabel="Crea nuova scheda"
-              >
-                <Text style={styles.actionBtnPrimaryText}>+ Nuova Scheda</Text>
-              </Pressable>
+              {userRole !== 'CLIENT' && (
+                <Pressable
+                  onPress={() => navigation.navigate('NewRoutineModal')}
+                  style={styles.actionBtnPrimary}
+                  accessibilityRole="button"
+                  accessibilityLabel="Crea nuova scheda"
+                >
+                  <Text style={styles.actionBtnPrimaryText}>+ Nuova Scheda</Text>
+                </Pressable>
+              )}
             </View>
 
             <View style={styles.subBarRow}>
               <Text style={typography.caption}>
                 {displayedRoutines.length} schede visualizzate ({routines.length} totali)
               </Text>
-              <Pressable onPress={handleRestoreRoutinesConfirm}>
-                <Text style={styles.restoreLink}>Ripristina Schede Default</Text>
-              </Pressable>
+              {userRole !== 'CLIENT' && (
+                <Pressable onPress={handleRestoreRoutinesConfirm}>
+                  <Text style={styles.restoreLink}>Ripristina Schede Default</Text>
+                </Pressable>
+              )}
             </View>
 
-            <Text style={styles.longPressHint}>
-              💡 Suggerimento: tieni premuta una cartella o una scheda per la selezione multipla ed eliminazione.
-            </Text>
+            {userRole !== 'CLIENT' && (
+              <Text style={styles.longPressHint}>
+                💡 Suggerimento: tieni premuta una cartella o una scheda per la selezione multipla ed eliminazione.
+              </Text>
+            )}
 
             {/* Folder Filter Scroll + Manage Folders Button */}
             <View style={styles.folderRowContainer}>
@@ -706,14 +822,16 @@ export const GymScreen: React.FC = () => {
                 })}
               </ScrollView>
 
-              <Pressable
-                onPress={() => setShowFolderModal(true)}
-                style={styles.manageFoldersBtn}
-                accessibilityRole="button"
-                accessibilityLabel="Gestisci cartelle di allenamento"
-              >
-                <Text style={styles.manageFoldersBtnText}>📁 Gestisci</Text>
-              </Pressable>
+              {userRole !== 'CLIENT' && (
+                <Pressable
+                  onPress={() => setShowFolderModal(true)}
+                  style={styles.manageFoldersBtn}
+                  accessibilityRole="button"
+                  accessibilityLabel="Gestisci cartelle di allenamento"
+                >
+                  <Text style={styles.manageFoldersBtnText}>📁 Gestisci</Text>
+                </Pressable>
+              )}
             </View>
 
             {/* Multi-Select Action Bar for Folders */}
@@ -890,36 +1008,43 @@ export const GymScreen: React.FC = () => {
                                 weekNumber: 1,
                               })
                             }
-                            style={styles.launchButton}
+                            style={[
+                              styles.launchButton,
+                              userRole === 'CLIENT' && { flex: 1 },
+                            ]}
                             accessibilityRole="button"
                             accessibilityLabel="Avvia live logger per questa scheda"
                           >
                             <Text style={styles.launchButtonText}>▶ AVVIA LIVE LOGGER</Text>
                           </Pressable>
 
-                          {/* Edit Routine (Builder) */}
-                          <Pressable
-                            onPress={() =>
-                              navigation.navigate('NewRoutineModal', {
-                                routineId: routine.id,
-                              })
-                            }
-                            style={styles.editRoutineBtn}
-                            accessibilityRole="button"
-                            accessibilityLabel="Modifica struttura scheda"
-                          >
-                            <Text style={styles.editRoutineBtnText}>✎ Modifica</Text>
-                          </Pressable>
+                          {userRole !== 'CLIENT' && (
+                            <>
+                              {/* Edit Routine (Builder) */}
+                              <Pressable
+                                onPress={() =>
+                                  navigation.navigate('NewRoutineModal', {
+                                    routineId: routine.id,
+                                  })
+                                }
+                                style={styles.editRoutineBtn}
+                                accessibilityRole="button"
+                                accessibilityLabel="Modifica struttura scheda"
+                              >
+                                <Text style={styles.editRoutineBtnText}>✎ Modifica</Text>
+                              </Pressable>
 
-                          {/* Delete Routine */}
-                          <Pressable
-                            onPress={() => handleDeleteRoutineConfirm(routine.id, routine.name)}
-                            style={styles.deleteRoutineBtn}
-                            accessibilityRole="button"
-                            accessibilityLabel="Elimina scheda"
-                          >
-                            <Text style={styles.deleteRoutineBtnText}>🗑</Text>
-                          </Pressable>
+                              {/* Delete Routine */}
+                              <Pressable
+                                onPress={() => handleDeleteRoutineConfirm(routine.id, routine.name)}
+                                style={styles.deleteRoutineBtn}
+                                accessibilityRole="button"
+                                accessibilityLabel="Elimina scheda"
+                              >
+                                <Text style={styles.deleteRoutineBtnText}>🗑</Text>
+                              </Pressable>
+                            </>
+                          )}
                         </View>
                       )}
                     </Card>
@@ -1215,14 +1340,16 @@ export const GymScreen: React.FC = () => {
                   Dizionario completo con 46 esercizi precaricati
                 </Text>
               </View>
-              <Pressable
-                onPress={() => navigation.navigate('ExerciseModal')}
-                style={styles.actionBtnPrimary}
-                accessibilityRole="button"
-                accessibilityLabel="Aggiungi nuovo esercizio"
-              >
-                <Text style={styles.actionBtnPrimaryText}>+ Nuovo Ex</Text>
-              </Pressable>
+              {userRole !== 'CLIENT' && (
+                <Pressable
+                  onPress={() => navigation.navigate('ExerciseModal')}
+                  style={styles.actionBtnPrimary}
+                  accessibilityRole="button"
+                  accessibilityLabel="Aggiungi nuovo esercizio"
+                >
+                  <Text style={styles.actionBtnPrimaryText}>+ Nuovo Ex</Text>
+                </Pressable>
+              )}
             </View>
 
             {/* Search Input */}
@@ -1323,34 +1450,36 @@ export const GymScreen: React.FC = () => {
                       </View>
                     </View>
 
-                    <View style={styles.catalogActionButtons}>
-                      {/* Edit Exercise Details */}
-                      <Pressable
-                        onPress={() =>
-                          navigation.navigate('ExerciseModal', {
-                            exerciseId: ex.id,
-                          })
-                        }
-                        style={styles.editCatalogBtn}
-                        accessibilityRole="button"
-                        accessibilityLabel="Modifica dettagli esercizio"
-                      >
-                        <Text style={styles.editCatalogBtnText}>✎ Modifica</Text>
-                      </Pressable>
+                    {userRole !== 'CLIENT' && (
+                      <View style={styles.catalogActionButtons}>
+                        {/* Edit Exercise Details */}
+                        <Pressable
+                          onPress={() =>
+                            navigation.navigate('ExerciseModal', {
+                              exerciseId: ex.id,
+                            })
+                          }
+                          style={styles.editCatalogBtn}
+                          accessibilityRole="button"
+                          accessibilityLabel="Modifica dettagli esercizio"
+                        >
+                          <Text style={styles.editCatalogBtnText}>✎ Modifica</Text>
+                        </Pressable>
 
-                      {/* Archive Toggle */}
-                      <Pressable
-                        onPress={() => archiveExercise(ex.id)}
-                        style={[
-                          styles.archiveBtn,
-                          ex.is_archived === 1 && styles.archiveBtnRestoring,
-                        ]}
-                      >
-                        <Text style={styles.archiveBtnText}>
-                          {ex.is_archived === 1 ? 'Ripristina' : 'Archivia'}
-                        </Text>
-                      </Pressable>
-                    </View>
+                        {/* Archive Toggle */}
+                        <Pressable
+                          onPress={() => archiveExercise(ex.id)}
+                          style={[
+                            styles.archiveBtn,
+                            ex.is_archived === 1 && styles.archiveBtnRestoring,
+                          ]}
+                        >
+                          <Text style={styles.archiveBtnText}>
+                            {ex.is_archived === 1 ? 'Ripristina' : 'Archivia'}
+                          </Text>
+                        </Pressable>
+                      </View>
+                    )}
                   </View>
 
                   {ex.notes ? (
@@ -2395,5 +2524,139 @@ const styles = StyleSheet.create({
   },
   folderDeleteBtnText: {
     fontSize: 13,
+  },
+
+  // RBAC & Delegation Styles
+  delegationBar: {
+    backgroundColor: colors.backgroundElevated,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    paddingTop: 10,
+    paddingBottom: 10,
+    paddingHorizontal: 16,
+  },
+  delegationHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  delegationCaption: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: colors.textSecondary,
+    letterSpacing: 0.5,
+  },
+  delegationRoleBadge: {
+    backgroundColor: 'rgba(59, 130, 246, 0.2)',
+    color: colors.accent,
+    fontSize: 10,
+    fontWeight: '800',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    overflow: 'hidden',
+  },
+  exitDelegationBtn: {
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: colors.danger,
+  },
+  exitDelegationBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.danger,
+  },
+  delegationChipsContainer: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  delegationChip: {
+    backgroundColor: colors.backgroundSubtle,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  delegationChipActive: {
+    backgroundColor: 'rgba(59, 130, 246, 0.2)',
+    borderColor: colors.accent,
+  },
+  delegationChipActiveClient: {
+    backgroundColor: 'rgba(236, 72, 153, 0.2)',
+    borderColor: '#EC4899',
+  },
+  delegationChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  delegationChipTextActive: {
+    color: colors.accent,
+    fontWeight: '700',
+  },
+  delegationChipTextActiveClient: {
+    color: '#EC4899',
+    fontWeight: '700',
+  },
+  delegationActiveBanner: {
+    marginTop: 10,
+    backgroundColor: 'rgba(236, 72, 153, 0.12)',
+    borderRadius: 8,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: '#EC4899',
+  },
+  delegationActiveTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#EC4899',
+    marginBottom: 2,
+  },
+  delegationActiveDesc: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    lineHeight: 15,
+  },
+  clientModeBanner: {
+    backgroundColor: 'rgba(16, 185, 129, 0.08)',
+    borderBottomWidth: 1,
+    borderBottomColor: colors.emerald,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+  },
+  clientModeHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  clientModeBadge: {
+    backgroundColor: 'rgba(16, 185, 129, 0.2)',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: colors.emerald,
+  },
+  clientModeBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: colors.emerald,
+  },
+  clientModeSubtext: {
+    fontSize: 11,
+    color: colors.textMuted,
+  },
+  clientModeDesc: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    lineHeight: 16,
   },
 });

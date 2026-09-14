@@ -19,6 +19,7 @@ export interface RoutineFolder {
   id: string;
   name: string;
   created_at: string;
+  owner_id?: string;
 }
 
 export interface SetDropStep {
@@ -80,6 +81,7 @@ export interface Workout {
   created_at: string;
   updated_at: string;
   exercises?: WorkoutExercise[];
+  owner_id?: string;
 }
 
 export interface RoutineExerciseSet {
@@ -122,4 +124,5 @@ export interface WorkoutRoutine {
   created_at: string;
   updated_at: string;
   exercises?: RoutineExercise[];
+  owner_id?: string;
 }
