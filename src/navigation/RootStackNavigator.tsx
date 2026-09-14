@@ -43,6 +43,7 @@ export const RootStackNavigator: React.FC = () => {
             screenOptions={{
               presentation: 'modal',
               animation: 'slide_from_bottom',
+              contentStyle: { backgroundColor: colors.backgroundSolid },
             }}
           >
             <Stack.Screen name="WorkoutModal" component={WorkoutModal} />

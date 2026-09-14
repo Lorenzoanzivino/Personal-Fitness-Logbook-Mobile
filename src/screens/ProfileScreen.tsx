@@ -16,6 +16,7 @@ import { typography } from '../theme/typography';
 import { Card } from '../components/Card';
 import { Avatar } from '../components/Avatar';
 import { CustomConfirmModal } from '../components/CustomConfirmModal';
+import { ScreenBackgroundWrapper } from '../components/ScreenBackgroundWrapper';
 import { profileService } from '../services/profileService';
 import { apiService } from '../services/api';
 import { UserProfile, UserRole, ClientAssociation } from '../types/profile';
@@ -509,7 +510,7 @@ export const ProfileScreen: React.FC = () => {
   }
 
   return (
-    <View style={styles.container}>
+    <ScreenBackgroundWrapper style={styles.container}>
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.contentContainer}
@@ -1228,14 +1229,14 @@ export const ProfileScreen: React.FC = () => {
           </Pressable>
         </Modal>
       )}
-    </View>
+    </ScreenBackgroundWrapper>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: 'transparent',
   },
   loadingContainer: {
     flex: 1,

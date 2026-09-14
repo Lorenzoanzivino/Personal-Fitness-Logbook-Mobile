@@ -20,8 +20,9 @@ const Tab = createBottomTabNavigator<RootTabParamList>();
 
 export const BottomTabNavigator: React.FC = () => {
   const insets = useSafeAreaInsets();
-  const dynamicHeight = layout.bottomBarHeight + insets.bottom;
-  const dynamicPaddingBottom = Math.max(8, insets.bottom + 4);
+  const baseHeight = 62;
+  const dynamicHeight = baseHeight + insets.bottom;
+  const dynamicPaddingBottom = insets.bottom > 0 ? insets.bottom + 5 : 6;
 
   return (
     <Tab.Navigator
@@ -111,16 +112,20 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   tabBarItem: {
-    minHeight: layout.minTouchTarget,
-    paddingVertical: 2,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 0,
   },
   tabBarLabel: {
-    fontSize: 11,
+    fontSize: 10.5,
     fontWeight: '700',
     marginTop: 2,
+    marginBottom: 0,
+    letterSpacing: 0.2,
   },
   iconContainer: {
     alignItems: 'center',
     justifyContent: 'center',
+    height: 24,
   },
 });

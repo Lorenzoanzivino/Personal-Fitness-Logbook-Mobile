@@ -4,6 +4,7 @@ import { colors } from '../theme/colors';
 import { layout } from '../theme/spacing';
 import { typography } from '../theme/typography';
 import { Card } from '../components/Card';
+import { ScreenBackgroundWrapper } from '../components/ScreenBackgroundWrapper';
 import { API_CONFIG } from '../services/config';
 
 export const SettingsScreen: React.FC = () => {
@@ -22,11 +23,12 @@ export const SettingsScreen: React.FC = () => {
   };
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.contentContainer}
-      showsVerticalScrollIndicator={false}
-    >
+    <ScreenBackgroundWrapper>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.contentContainer}
+        showsVerticalScrollIndicator={false}
+      >
       <View style={styles.header}>
         <Text style={typography.caption}>SISTEMA & PORTABILITÀ</Text>
         <Text style={typography.h1}>Impostazioni</Text>
@@ -106,13 +108,14 @@ export const SettingsScreen: React.FC = () => {
         </View>
       </Card>
     </ScrollView>
+    </ScreenBackgroundWrapper>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: 'transparent',
   },
   contentContainer: {
     padding: 16,

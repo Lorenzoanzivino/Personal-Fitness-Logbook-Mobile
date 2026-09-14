@@ -8,6 +8,7 @@ import { typography } from '../theme/typography';
 import { Card } from '../components/Card';
 import { Avatar } from '../components/Avatar';
 import { WeightTrendChart } from '../components/WeightTrendChart';
+import { ScreenBackgroundWrapper } from '../components/ScreenBackgroundWrapper';
 import { profileService } from '../services/profileService';
 import { useGym } from '../context/GymContext';
 import { useMeasurements } from '../context/MeasurementContext';
@@ -48,11 +49,12 @@ export const HomeScreen: React.FC = () => {
   const suggestedRoutine = routines[0];
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.contentContainer}
-      showsVerticalScrollIndicator={false}
-    >
+    <ScreenBackgroundWrapper>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.contentContainer}
+        showsVerticalScrollIndicator={false}
+      >
       {/* Header Section with User Avatar on the Right */}
       <View style={styles.heroSection}>
         <View style={styles.heroHeaderRow}>
@@ -276,13 +278,14 @@ export const HomeScreen: React.FC = () => {
         </Pressable>
       </Card>
     </ScrollView>
+    </ScreenBackgroundWrapper>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: 'transparent',
   },
   contentContainer: {
     padding: 16,

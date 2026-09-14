@@ -1,6 +1,7 @@
 export const colors = {
   // Base Gym Dark Foundation
-  background: '#0F172A', // slate-900: Sfondo globale ad alto contrasto
+  background: '#0F172A', // slate-900: Sfondo globale solido ad alto contrasto
+  backgroundSolid: '#0F172A', // slate-900: Sfondo pieno per modali e fallback
   backgroundElevated: '#1E293B', // slate-800: Card, contenitori e header
   backgroundSubtle: '#334155', // slate-700: Bordi, divisori e input background
 

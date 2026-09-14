@@ -272,7 +272,7 @@ export const UploadDietModal: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: colors.backgroundSolid,
   },
   modalHeader: {
     flexDirection: 'row',
@@ -332,7 +332,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   textInput: {
-    backgroundColor: colors.background,
+    backgroundColor: colors.backgroundSolid,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: layout.borderRadiusSm,

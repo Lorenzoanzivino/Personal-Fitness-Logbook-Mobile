@@ -10,6 +10,7 @@ import { useMeasurements } from '../context/MeasurementContext';
 import { BodyMeasurement } from '../types/measurement';
 import { CustomConfirmModal } from '../components/CustomConfirmModal';
 import { ToastFeedback, ToastType } from '../components/ToastFeedback';
+import { ScreenBackgroundWrapper } from '../components/ScreenBackgroundWrapper';
 
 export const MeasurementsScreen: React.FC = () => {
   const navigation = useNavigation<TabNavigationProp<'Measurements'>>();
@@ -95,7 +96,7 @@ export const MeasurementsScreen: React.FC = () => {
   };
 
   return (
-    <View style={styles.container}>
+    <ScreenBackgroundWrapper style={styles.container}>
       <ScrollView
         style={styles.container}
         contentContainerStyle={styles.contentContainer}
@@ -424,14 +425,14 @@ export const MeasurementsScreen: React.FC = () => {
         message={toast.message}
         onDismiss={() => setToast((prev) => ({ ...prev, visible: false }))}
       />
-    </View>
+    </ScreenBackgroundWrapper>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: 'transparent',
   },
   contentContainer: {
     padding: 16,

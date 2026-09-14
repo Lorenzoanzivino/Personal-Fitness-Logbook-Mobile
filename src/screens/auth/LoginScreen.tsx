@@ -14,6 +14,7 @@ import { colors } from '../../theme/colors';
 import { layout } from '../../theme/spacing';
 import { typography } from '../../theme/typography';
 import { Card } from '../../components/Card';
+import { ScreenBackgroundWrapper } from '../../components/ScreenBackgroundWrapper';
 import { useAuth } from '../../context/AuthContext';
 
 export const LoginScreen: React.FC = () => {
@@ -61,10 +62,11 @@ export const LoginScreen: React.FC = () => {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
+    <ScreenBackgroundWrapper>
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
@@ -182,13 +184,14 @@ export const LoginScreen: React.FC = () => {
         </Card>
       </ScrollView>
     </KeyboardAvoidingView>
+    </ScreenBackgroundWrapper>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: 'transparent',
   },
   scrollContent: {
     flexGrow: 1,

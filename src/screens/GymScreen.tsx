@@ -17,6 +17,7 @@ import { typography } from '../theme/typography';
 import { Card } from '../components/Card';
 import { CustomConfirmModal } from '../components/CustomConfirmModal';
 import { ToastFeedback, ToastType } from '../components/ToastFeedback';
+import { ScreenBackgroundWrapper } from '../components/ScreenBackgroundWrapper';
 
 type SubTab = 'routines' | 'history' | 'progression' | 'exercises';
 type GymScreenRouteProp = RouteProp<RootTabParamList, 'Gym'>;
@@ -502,7 +503,7 @@ export const GymScreen: React.FC = () => {
       : routines.filter((r) => r.folder_id === selectedFolderFilter);
 
   return (
-    <View style={styles.container}>
+    <ScreenBackgroundWrapper style={styles.container}>
       {/* RBAC Header: Trainer Delegation Switcher OR Client Status Banner */}
       {userRole === 'TRAINER' ? (
         <View style={styles.delegationBar}>
@@ -1683,14 +1684,14 @@ export const GymScreen: React.FC = () => {
         message={toast.message}
         onDismiss={() => setToast((prev) => ({ ...prev, visible: false }))}
       />
-    </View>
+    </ScreenBackgroundWrapper>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: 'transparent',
   },
   subTabHeader: {
     backgroundColor: colors.primary,

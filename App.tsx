@@ -31,7 +31,7 @@ function AppContent() {
     <SafeAreaView
       style={[
         styles.safeArea,
-        { backgroundColor: isAuthenticated ? colors.primary : colors.background },
+        { backgroundColor: isAuthenticated ? colors.primary : '#000000' },
       ]}
       edges={['top']}
     >
@@ -69,6 +69,6 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: '#000000',
   },
 });

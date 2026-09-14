@@ -10,6 +10,7 @@ import { useDiet } from '../context/DietContext';
 import { DietPdf } from '../types/diet';
 import { CustomConfirmModal } from '../components/CustomConfirmModal';
 import { ToastFeedback, ToastType } from '../components/ToastFeedback';
+import { ScreenBackgroundWrapper } from '../components/ScreenBackgroundWrapper';
 
 export const DietScreen: React.FC = () => {
   const navigation = useNavigation<TabNavigationProp<'Diet'>>();
@@ -78,7 +79,7 @@ export const DietScreen: React.FC = () => {
   const archivedDiets = diets.filter((d) => d.id !== activeDiet?.id);
 
   return (
-    <View style={styles.container}>
+    <ScreenBackgroundWrapper style={styles.container}>
       <ScrollView
         style={styles.container}
         contentContainerStyle={styles.contentContainer}
@@ -232,14 +233,14 @@ export const DietScreen: React.FC = () => {
         message={toast.message}
         onDismiss={() => setToast((prev) => ({ ...prev, visible: false }))}
       />
-    </View>
+    </ScreenBackgroundWrapper>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: 'transparent',
   },
   contentContainer: {
     padding: 16,

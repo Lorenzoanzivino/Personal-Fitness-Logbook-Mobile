@@ -8,3 +8,4 @@ export * from './ToastFeedback';
 export * from './YouTubeModalOverlay';
 export * from './ImmersiveTimerOverlay';
 export * from './RestTimerWidget';
+export * from './ScreenBackgroundWrapper';
