@@ -163,10 +163,10 @@ export const GymProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const activeOwnerId: string =
     userRole === 'CLIENT'
-      ? String(userProfile.id || 'client-simona-1')
+      ? String(userProfile.id || 'client-1')
       : selectedClient
       ? selectedClient.id
-      : String(userProfile.id || 'trainer-marco-1');
+      : String(userProfile.id || 'trainer-1');
 
   // Filter routines by active context (RBAC & Delega)
   const filteredRoutines = routines.filter((r) => {
@@ -174,7 +174,12 @@ export const GymProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       if (selectedClient) {
         return r.owner_id === selectedClient.id;
       }
-      return !r.owner_id || r.owner_id === 'trainer-marco-1' || r.owner_id === userProfile.id;
+      return (
+        !r.owner_id ||
+        r.owner_id === 'trainer-1' ||
+        r.owner_id === 'trainer-marco-1' ||
+        r.owner_id === userProfile.id
+      );
     } else {
       return (
         r.owner_id === activeOwnerId ||
@@ -190,7 +195,12 @@ export const GymProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       if (selectedClient) {
         return f.owner_id === selectedClient.id;
       }
-      return !f.owner_id || f.owner_id === 'trainer-marco-1' || f.owner_id === userProfile.id;
+      return (
+        !f.owner_id ||
+        f.owner_id === 'trainer-1' ||
+        f.owner_id === 'trainer-marco-1' ||
+        f.owner_id === userProfile.id
+      );
     } else {
       return (
         !f.owner_id ||
@@ -354,7 +364,7 @@ export const GymProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const targetOwnerId = data.owner_id || activeOwnerId;
     const duplicate = routines.find(
       (r) =>
-        (r.owner_id || 'trainer-marco-1') === targetOwnerId &&
+        (r.owner_id || userProfile.id || 'trainer-1') === targetOwnerId &&
         r.name.trim().toLowerCase() === trimmedName.toLowerCase()
     );
     if (duplicate) {
@@ -427,7 +437,7 @@ export const GymProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     if (!trimmed) throw new Error('Il nome della cartella non può essere vuoto.');
     const existing = folders.find(
       (f) =>
-        (f.owner_id || 'trainer-marco-1') === activeOwnerId &&
+        (f.owner_id || userProfile.id || 'trainer-1') === activeOwnerId &&
         f.name.toLowerCase() === trimmed.toLowerCase()
     );
     if (existing) return existing;

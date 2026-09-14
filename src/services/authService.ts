@@ -23,33 +23,8 @@ export const TRAINER_ADMIN = {
   token: 'mock-jwt-trainer-lorenzo-admin',
 };
 
-// 2. CLIENTI INIZIALI PRE-PROVISIONATI PER TEST
-const INITIAL_PROVISIONED_CLIENTS: ProvisionedClient[] = [
-  {
-    id: 'client-simona-1',
-    username: 'Simona',
-    first_name: 'Simona',
-    last_name: 'Bianchi',
-    otp: 'OTP123',
-    trainer_id: 'trainer-lorenzo-1',
-    trainer_name: 'Lorenzo Anzivino',
-    email: 'simona.b@example.com',
-    notes: 'Obiettivo: Ipertrofia glutei & ricomposizione corporea (3x/week)',
-    created_at: '2026-09-01T10:00:00Z',
-  },
-  {
-    id: 'client-luca-2',
-    username: 'Luca',
-    first_name: 'Luca',
-    last_name: 'Moretti',
-    otp: 'OTP456',
-    trainer_id: 'trainer-lorenzo-1',
-    trainer_name: 'Lorenzo Anzivino',
-    email: 'luca.m@example.com',
-    notes: 'Obiettivo: Forza panca e progressione carichi (4x/week)',
-    created_at: '2026-09-08T14:30:00Z',
-  },
-];
+// 2. CLIENTI INIZIALI (partenza a zero)
+const INITIAL_PROVISIONED_CLIENTS: ProvisionedClient[] = [];
 
 class AuthService {
   /**
@@ -115,11 +90,13 @@ class AuthService {
       };
     }
 
-    // A. Verifica Credenziali TRAINER (LorenzoAnzivino / admin123)
-    if (
-      cleanUsername.toLowerCase() === TRAINER_ADMIN.username.toLowerCase() &&
-      cleanPasswordOrOtp === TRAINER_ADMIN.password
-    ) {
+    // A. Verifica Credenziali TRAINER (Lorenzo o LorenzoAnzivino / admin123)
+    const isTrainerMatch =
+      (cleanUsername.toLowerCase() === 'lorenzo' ||
+        cleanUsername.toLowerCase() === 'lorenzoanzivino') &&
+      cleanPasswordOrOtp === TRAINER_ADMIN.password;
+
+    if (isTrainerMatch) {
       const session: AuthSession = {
         user: { ...TRAINER_ADMIN.user },
         token: TRAINER_ADMIN.token,
@@ -133,8 +110,7 @@ class AuthService {
     const matchedClient = provisionedList.find(
       (c) =>
         c.username.toLowerCase() === cleanUsername.toLowerCase() &&
-        (c.otp.toUpperCase() === cleanPasswordOrOtp.toUpperCase() ||
-          cleanPasswordOrOtp.toUpperCase() === 'OTP123')
+        c.otp.toUpperCase() === cleanPasswordOrOtp.toUpperCase()
     );
 
     if (matchedClient) {
@@ -268,6 +244,17 @@ class AuthService {
       await AsyncStorage.removeItem(STORAGE_KEY_AUTH_SESSION);
     } catch (e) {
       console.warn('Errore rimozione sessione auth:', e);
+    }
+  }
+
+  /**
+   * Elimina tutti i clienti provisionati salvati (Reset Completo)
+   */
+  async clearAllProvisionedClients(): Promise<void> {
+    try {
+      await AsyncStorage.removeItem(STORAGE_KEY_PROVISIONED_CLIENTS);
+    } catch (e) {
+      console.warn('Errore rimozione provisioned clients:', e);
     }
   }
 }

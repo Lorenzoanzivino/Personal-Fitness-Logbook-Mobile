@@ -8,35 +8,20 @@ import {
   ProfileResponseDto,
 } from '../types/profile';
 
-const STORAGE_KEY_PROFILE = '@user_profile_v2';
+const STORAGE_KEY_PROFILE = '@user_profile_v3';
 
-const DEFAULT_TRAINER_CLIENTS: ClientAssociation[] = [
-  {
-    id: 'client-simona-1',
-    name: 'Simona Bianchi',
-    email: 'simona.b@example.com',
-    linked_at: '2026-09-01T10:00:00Z',
-    notes: 'Obiettivo: Tonificazione glutei & ricomposizione (3x/week)',
-  },
-  {
-    id: 'client-luca-2',
-    name: 'Luca Moretti',
-    email: 'luca.m@example.com',
-    linked_at: '2026-09-08T14:30:00Z',
-    notes: 'Obiettivo: Forza panca e progressione carichi (4x/week)',
-  },
-];
+const DEFAULT_TRAINER_CLIENTS: ClientAssociation[] = [];
 
 const INITIAL_PROFILE: UserProfile = {
-  id: 'trainer-marco-1',
-  first_name: 'Marco',
-  last_name: 'Rossi',
-  birth_date: '15-05-1994',
+  id: 'trainer-1',
+  first_name: 'Lorenzo',
+  last_name: 'Anzivino',
+  birth_date: '01-01-1995',
   height_cm: 180,
   avatar_url: null,
   role: 'TRAINER',
-  email: 'marco.trainer@example.com',
-  clients: DEFAULT_TRAINER_CLIENTS,
+  email: 'lorenzo@example.com',
+  clients: [],
   trainer_id: undefined,
   trainer_name: undefined,
   created_at: new Date().toISOString(),

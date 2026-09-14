@@ -23,16 +23,12 @@ import { UserProfile, UserRole, ClientAssociation } from '../types/profile';
 import { GenerateOtpResponseDto } from '../types/api';
 import { useAuth } from '../context/AuthContext';
 import { useGym } from '../context/GymContext';
-import { useMeasurements } from '../context/MeasurementContext';
-import { useDiet } from '../context/DietContext';
 import * as Clipboard from 'expo-clipboard';
 
 export const ProfileScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const { user, role: authRole, logout, createClientAccount, provisionedClients } = useAuth();
-  const { resetEntireApp, setSelectedClient } = useGym();
-  const { clearAllMeasurements } = useMeasurements();
-  const { clearAllDiets } = useDiet();
+  const { setSelectedClient } = useGym();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -99,12 +95,12 @@ export const ProfileScreen: React.FC = () => {
     return () => unsub();
   }, []);
 
-  // Auto-dismiss overlay feedback banner after 2.8s
+  // Auto-dismiss overlay feedback banner after 2.5s
   useEffect(() => {
     if (!feedback) return;
     const timer = setTimeout(() => {
       setFeedback(null);
-    }, 2800);
+    }, 2500);
     return () => clearTimeout(timer);
   }, [feedback]);
 
@@ -226,6 +222,42 @@ export const ProfileScreen: React.FC = () => {
       setFeedback({
         type: 'error',
         text: 'Errore durante il salvataggio del profilo.',
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleAvatarSelected = async (newUri: string) => {
+    setAvatarUri(newUri);
+    setSaving(true);
+    setFeedback(null);
+    try {
+      const numHeight = parseFloat(heightCm) || profile?.height_cm || 175;
+      const res = await profileService.updateProfile({
+        first_name: firstName.trim() || profile?.first_name || 'Utente',
+        last_name: lastName.trim() || profile?.last_name || '',
+        birth_date: birthDate.trim() || profile?.birth_date || '01-01-2000',
+        height_cm: numHeight,
+        avatar_url: newUri,
+        role: currentRole,
+      });
+      if (res.success && res.data) {
+        setProfile(res.data);
+        setFeedback({
+          type: 'success',
+          text: 'Nuovo avatar salvato con successo!',
+        });
+      } else {
+        setFeedback({
+          type: 'error',
+          text: res.error?.message || 'Impossibile salvare il nuovo avatar.',
+        });
+      }
+    } catch {
+      setFeedback({
+        type: 'error',
+        text: 'Errore durante il salvataggio automatico dell\'avatar.',
       });
     } finally {
       setSaving(false);
@@ -463,37 +495,6 @@ export const ProfileScreen: React.FC = () => {
     });
   };
 
-  // --- DANGER RESET LOGIC ---
-  const handleResetAppConfirm = () => {
-    setConfirmModal({
-      visible: true,
-      title: 'Reset Totale Applicazione',
-      message:
-        'ATTENZIONE: Questa azione eliminerà DEFINITIVAMENTE tutti i dati: profilo utente, catalogo schede, storico workout, pesate e diete.\n\nQuesta operazione non è reversibile. Vuoi procedere?',
-      confirmText: 'Svuota Tutto',
-      isDestructive: true,
-      onConfirm: async () => {
-        try {
-          await resetEntireApp();
-          await clearAllMeasurements();
-          await clearAllDiets();
-          await profileService.resetProfile();
-          setConfirmModal((prev) => ({ ...prev, visible: false }));
-          setFeedback({
-            type: 'success',
-            text: 'Applicazione ripristinata con successo ai valori iniziali.',
-          });
-          loadProfile();
-        } catch {
-          setConfirmModal((prev) => ({ ...prev, visible: false }));
-          setFeedback({
-            type: 'error',
-            text: 'Errore durante il reset dell\'applicazione.',
-          });
-        }
-      },
-    });
-  };
 
   const fullName = `${firstName.trim()} ${lastName.trim()}`.trim() || 'Atleta';
   const clientsList = profile.clients || [];
@@ -527,13 +528,7 @@ export const ProfileScreen: React.FC = () => {
           name={fullName}
           size={104}
           editable={true}
-          onImageSelected={(uri) => {
-            setAvatarUri(uri);
-            setFeedback({
-              type: 'success',
-              text: 'Nuova immagine avatar selezionata. Clicca su Salva per confermare.',
-            });
-          }}
+          onImageSelected={handleAvatarSelected}
         />
 
         {/* ========================================================= */}
@@ -997,23 +992,6 @@ export const ProfileScreen: React.FC = () => {
           </Pressable>
         </Card>
 
-        {/* Danger Zone: Reset Totale Applicazione */}
-        <Card style={styles.dangerCard}>
-          <Text style={styles.dangerTitle}>⚠️ Zona di Pericolo: Reset Completo</Text>
-          <Text style={styles.dangerDesc}>
-            Se desideri ripartire da zero o cancellare ogni dato memorizzato sul dispositivo, puoi
-            eseguire un reset totale. Verranno eliminati: il profilo atleta, tutte le schede di
-            allenamento create, lo storico completo delle sessioni e tutte le cartelle salvate.
-          </Text>
-          <Pressable
-            onPress={handleResetAppConfirm}
-            style={styles.dangerButton}
-            accessibilityRole="button"
-            accessibilityLabel="Cancella tutti i dati dell'applicazione"
-          >
-            <Text style={styles.dangerButtonText}>SVUOTA TUTTO & RESET COMPLETO</Text>
-          </Pressable>
-        </Card>
       </ScrollView>
 
       {/* Confirmation Modal */}

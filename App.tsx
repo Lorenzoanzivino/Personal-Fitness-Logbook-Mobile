@@ -3,7 +3,7 @@ import { StatusBar } from 'expo-status-bar';
 import { StyleSheet, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { NavigationContainer, DarkTheme } from '@react-navigation/native';
-import { RootStackNavigator } from './src/navigation';
+import { RootStackNavigator, navigationRef } from './src/navigation';
 import { Header } from './src/components';
 import { colors } from './src/theme/colors';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
@@ -37,7 +37,7 @@ function AppContent() {
     >
       <StatusBar style="light" />
       <View style={styles.container}>
-        <NavigationContainer theme={customDarkTheme}>
+        <NavigationContainer ref={navigationRef} theme={customDarkTheme}>
           {isAuthenticated && <Header />}
           <RootStackNavigator />
         </NavigationContainer>

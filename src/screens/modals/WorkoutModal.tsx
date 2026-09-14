@@ -108,12 +108,14 @@ export const WorkoutModal: React.FC = () => {
     seconds: number;
     exerciseName: string;
     setNumberText: string;
+    timerMode?: 'rest' | 'work';
     targetSetCallback: () => void;
   }>({
     visible: false,
     seconds: 90,
     exerciseName: '',
     setNumberText: '',
+    timerMode: 'rest',
     targetSetCallback: () => {},
   });
 
@@ -415,17 +417,39 @@ export const WorkoutModal: React.FC = () => {
     });
   };
 
-  const handleToggleComplete = (exIdx: number, setIdx: number) => {
+  const handleToggleComplete = (exIdx: number, setIdx: number, forceCompleted?: boolean) => {
     const targetSet = liveExercises[exIdx].sets[setIdx];
-    const isNowCompleted = !targetSet.completed;
+    const isNowCompleted = forceCompleted !== undefined ? forceCompleted : !targetSet.completed;
 
     const updated = [...liveExercises];
     updated[exIdx].sets[setIdx].completed = isNowCompleted;
     setLiveExercises(updated);
 
-    if (isNowCompleted) {
+    if (isNowCompleted && forceCompleted === undefined) {
       handleOpenRestTimerForSet(exIdx, setIdx);
     }
+  };
+
+  const handleStartWorkTimer = (exIdx: number, setIdx: number) => {
+    const exercise = liveExercises[exIdx];
+    const set = exercise.sets[setIdx];
+    const workSeconds = set.time_seconds || 60;
+
+    setTimerOverlay({
+      visible: true,
+      seconds: workSeconds,
+      timerMode: 'work',
+      exerciseName: exercise.name,
+      setNumberText: `Serie ${set.set_number} • Tensione Attiva: ${workSeconds}s`,
+      targetSetCallback: () => {
+        // 1. Marca la serie come completata
+        handleToggleComplete(exIdx, setIdx, true);
+        // 2. Avvia direttamente il timer di recupero classico
+        setTimeout(() => {
+          handleOpenRestTimerForSet(exIdx, setIdx);
+        }, 400);
+      },
+    });
   };
 
   // Conclude & Save Session to History
@@ -560,6 +584,7 @@ export const WorkoutModal: React.FC = () => {
       <ImmersiveTimerOverlay
         visible={timerOverlay.visible}
         initialSeconds={timerOverlay.seconds}
+        timerMode={timerOverlay.timerMode}
         exerciseName={timerOverlay.exerciseName}
         setNumberText={timerOverlay.setNumberText}
         onComplete={timerOverlay.targetSetCallback}
@@ -1045,54 +1070,54 @@ export const WorkoutModal: React.FC = () => {
                         </View>
 
                         <View style={styles.setMainRow}>
-                          {/* Set Number */}
-                          <Text style={styles.setNumText}>S{set.set_number}</Text>
-
-                          {/* Set Type Badge */}
-                          <View style={[styles.setTypeBadge, { backgroundColor: bStyle.bg }]}>
-                            <Text style={[styles.setTypeBadgeText, { color: bStyle.text }]}>
-                              {bStyle.label}
-                            </Text>
+                          {/* Colonna 1: Tipo Serie & Numero (20%) */}
+                          <View style={styles.colSetType}>
+                            <Text style={styles.setNumText}>S{set.set_number}</Text>
+                            <View style={[styles.setTypeBadge, { backgroundColor: bStyle.bg }]}>
+                              <Text style={[styles.setTypeBadgeText, { color: bStyle.text }]} numberOfLines={1}>
+                                {bStyle.label}
+                              </Text>
+                            </View>
                           </View>
 
-                          {/* Polymorphic Inputs */}
-                          {exercise.exerciseType === 'reps' && (
-                            <View style={styles.inputsRow}>
-                              <View style={styles.inputCol}>
-                                <TextInput
-                                  style={[
-                                    styles.inputBox,
-                                    set.completed && styles.inputBoxCompleted,
-                                  ]}
-                                  keyboardType="decimal-pad"
-                                  value={set.weight_kg === 0 ? '' : String(set.weight_kg)}
-                                  onChangeText={(val) => handleUpdateWeight(exIdx, setIdx, val)}
-                                  placeholder="0"
-                                  placeholderTextColor={colors.textMuted}
-                                />
-                                <Text style={styles.inputSubLabel}>kg</Text>
-                              </View>
+                          {/* Colonna 2: Input Carichi / Reps / Elastici (60%) */}
+                          <View style={styles.colInputs}>
+                            {exercise.exerciseType === 'reps' && (
+                              <View style={styles.inputsRow}>
+                                <View style={styles.inputCol}>
+                                  <TextInput
+                                    style={[
+                                      styles.inputBox,
+                                      set.completed && styles.inputBoxCompleted,
+                                    ]}
+                                    keyboardType="decimal-pad"
+                                    value={set.weight_kg === 0 ? '' : String(set.weight_kg)}
+                                    onChangeText={(val) => handleUpdateWeight(exIdx, setIdx, val)}
+                                    placeholder="0"
+                                    placeholderTextColor={colors.textMuted}
+                                  />
+                                  <Text style={styles.inputSubLabel}>kg</Text>
+                                </View>
 
-                              <View style={styles.inputCol}>
-                                <TextInput
-                                  style={[
-                                    styles.inputBox,
-                                    set.completed && styles.inputBoxCompleted,
-                                  ]}
-                                  keyboardType="numeric"
-                                  value={set.reps === 0 ? '' : String(set.reps)}
-                                  onChangeText={(val) => handleUpdateReps(exIdx, setIdx, val)}
-                                  placeholder="0"
-                                  placeholderTextColor={colors.textMuted}
-                                />
-                                <Text style={styles.inputSubLabel}>reps</Text>
+                                <View style={styles.inputCol}>
+                                  <TextInput
+                                    style={[
+                                      styles.inputBox,
+                                      set.completed && styles.inputBoxCompleted,
+                                    ]}
+                                    keyboardType="numeric"
+                                    value={set.reps === 0 ? '' : String(set.reps)}
+                                    onChangeText={(val) => handleUpdateReps(exIdx, setIdx, val)}
+                                    placeholder="0"
+                                    placeholderTextColor={colors.textMuted}
+                                  />
+                                  <Text style={styles.inputSubLabel}>reps</Text>
+                                </View>
                               </View>
-                            </View>
-                          )}
+                            )}
 
-                          {exercise.exerciseType === 'time' && (
-                            <View style={styles.inputsRow}>
-                              <View style={[styles.inputCol, { flex: 2 }]}>
+                            {exercise.exerciseType === 'time' && (
+                              <View style={[styles.inputsRow, { flexDirection: 'column', alignItems: 'stretch' }]}>
                                 <View style={styles.timeInputRow}>
                                   <Pressable
                                     onPress={() => {
@@ -1127,67 +1152,84 @@ export const WorkoutModal: React.FC = () => {
                                     <Text style={styles.stepBtnText}>+5s</Text>
                                   </Pressable>
                                 </View>
-                                <Text style={styles.inputSubLabel}>
-                                  secondi
+                                <Text style={[styles.inputSubLabel, { textAlign: 'center', marginTop: 2, marginBottom: 4 }]}>
+                                  secondi target
                                 </Text>
-                              </View>
-                            </View>
-                          )}
 
-                          {exercise.exerciseType === 'bodyweight' && (
-                            <View style={styles.inputsRow}>
-                              <View style={{ flex: 1, minWidth: 150, marginRight: 6 }}>
-                                <BandSelectDropdown
-                                  compact
-                                  disabled={set.completed}
-                                  value={set.band_assistance || 'none'}
-                                  onChange={(val) => {
-                                    const updated = [...liveExercises];
-                                    updated[exIdx].sets[setIdx].band_assistance = val;
-                                    setLiveExercises(updated);
-                                  }}
-                                />
-                                <Text style={styles.inputSubLabel}>modalità</Text>
+                                <Pressable
+                                  onPress={() => handleStartWorkTimer(exIdx, setIdx)}
+                                  style={({ pressed }) => [
+                                    styles.startWorkTimerBtn,
+                                    set.completed && styles.startWorkTimerBtnCompleted,
+                                    pressed && { opacity: 0.8 },
+                                  ]}
+                                  accessibilityRole="button"
+                                  accessibilityLabel={`Avvia timer lavoro ${set.time_seconds || 60} secondi`}
+                                >
+                                  <Text style={styles.startWorkTimerBtnText}>
+                                    ▶ Avvia Lavoro ({set.time_seconds || 60}s)
+                                  </Text>
+                                </Pressable>
                               </View>
+                            )}
 
-                              {set.band_assistance === 'weighted' && (
-                                <View style={[styles.inputCol, { width: 68, marginRight: 6 }]}>
+                            {exercise.exerciseType === 'bodyweight' && (
+                              <View style={styles.inputsRow}>
+                                <View style={{ flex: 1, minWidth: 0, flexShrink: 1, marginRight: 4 }}>
+                                  <BandSelectDropdown
+                                    compact
+                                    disabled={set.completed}
+                                    value={set.band_assistance || 'none'}
+                                    onChange={(val) => {
+                                      const updated = [...liveExercises];
+                                      updated[exIdx].sets[setIdx].band_assistance = val;
+                                      setLiveExercises(updated);
+                                    }}
+                                  />
+                                  <Text style={styles.inputSubLabel} numberOfLines={1}>modalità</Text>
+                                </View>
+
+                                {set.band_assistance === 'weighted' && (
+                                  <View style={{ width: 44, flexShrink: 1, marginRight: 4 }}>
+                                    <TextInput
+                                      style={[
+                                        styles.inputBox,
+                                        styles.inputBoxCompact,
+                                        set.completed && styles.inputBoxCompleted,
+                                      ]}
+                                      keyboardType="decimal-pad"
+                                      editable={!set.completed}
+                                      value={set.weight_kg === 0 ? '' : String(set.weight_kg)}
+                                      onChangeText={(val) => handleUpdateWeight(exIdx, setIdx, val)}
+                                      placeholder="+0"
+                                      placeholderTextColor={colors.textMuted}
+                                    />
+                                    <Text style={styles.inputSubLabel} numberOfLines={1}>+kg</Text>
+                                  </View>
+                                )}
+
+                                <View style={{ width: 42, flexShrink: 1 }}>
                                   <TextInput
                                     style={[
                                       styles.inputBox,
+                                      styles.inputBoxCompact,
                                       set.completed && styles.inputBoxCompleted,
                                     ]}
-                                    keyboardType="decimal-pad"
+                                    keyboardType="numeric"
                                     editable={!set.completed}
-                                    value={set.weight_kg === 0 ? '' : String(set.weight_kg)}
-                                    onChangeText={(val) => handleUpdateWeight(exIdx, setIdx, val)}
-                                    placeholder="+0"
+                                    value={set.reps === 0 ? '' : String(set.reps)}
+                                    onChangeText={(val) => handleUpdateReps(exIdx, setIdx, val)}
+                                    placeholder="0"
                                     placeholderTextColor={colors.textMuted}
                                   />
-                                  <Text style={styles.inputSubLabel}>+kg zavorra</Text>
+                                  <Text style={styles.inputSubLabel} numberOfLines={1}>reps</Text>
                                 </View>
-                              )}
-
-                              <View style={[styles.inputCol, { width: 56 }]}>
-                                <TextInput
-                                  style={[
-                                    styles.inputBox,
-                                    set.completed && styles.inputBoxCompleted,
-                                  ]}
-                                  keyboardType="numeric"
-                                  editable={!set.completed}
-                                  value={set.reps === 0 ? '' : String(set.reps)}
-                                  onChangeText={(val) => handleUpdateReps(exIdx, setIdx, val)}
-                                  placeholder="0"
-                                  placeholderTextColor={colors.textMuted}
-                                />
-                                <Text style={styles.inputSubLabel}>reps</Text>
                               </View>
-                            </View>
-                          )}
+                            )}
+                          </View>
 
-                          {/* Action Column: Checkbox + 'rec.' and Rest Seconds Button */}
-                          <View style={styles.actionColumn}>
+                          {/* Colonna 3: Checkbox e Recupero (20%) */}
+                          <View style={styles.colAction}>
                             <Pressable
                               onPress={() => handleToggleComplete(exIdx, setIdx)}
                               style={[
@@ -1597,30 +1639,55 @@ const styles = StyleSheet.create({
   setMainRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    width: '100%',
+  },
+  colSetType: {
+    width: '20%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingRight: 2,
+  },
+  colInputs: {
+    width: '60%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 2,
+  },
+  colAction: {
+    width: '20%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingLeft: 2,
   },
   setNumText: {
-    width: 32,
-    fontSize: 13,
-    fontWeight: '700',
+    fontSize: 12,
+    fontWeight: '800',
     color: colors.text,
+    marginBottom: 2,
   },
   setTypeBadge: {
-    width: 74,
-    height: 28,
+    width: '100%',
+    maxWidth: 58,
+    height: 20,
     borderRadius: layout.borderRadiusSm,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 8,
   },
   setTypeBadgeText: {
-    fontSize: 9,
+    fontSize: 8.5,
     fontWeight: '800',
+    letterSpacing: 0.2,
+  },
+  inputBoxCompact: {
+    paddingHorizontal: 2,
+    fontSize: 12,
   },
   inputsRow: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 4,
   },
   inputCol: {
     flex: 1,
@@ -1946,6 +2013,27 @@ const styles = StyleSheet.create({
   bandPillTextActive: {
     color: '#0F172A',
     fontWeight: '800',
+  },
+  startWorkTimerBtn: {
+    backgroundColor: 'rgba(245, 158, 11, 0.2)',
+    borderWidth: 1,
+    borderColor: colors.warning,
+    borderRadius: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    marginTop: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  startWorkTimerBtnCompleted: {
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    borderColor: colors.emerald,
+  },
+  startWorkTimerBtnText: {
+    color: colors.warning,
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.3,
   },
 });
 

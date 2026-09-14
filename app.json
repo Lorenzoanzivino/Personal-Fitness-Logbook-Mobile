@@ -1,7 +1,8 @@
 {
   "expo": {
-    "name": "Personal-Fitness-Logbook-Mobile",
-    "slug": "Personal-Fitness-Logbook-Mobile",
+    "name": "MyTrainUp Logbook",
+    "slug": "mytrainup-logbook",
+    "displayName": "MyTrainUp Logbook",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",

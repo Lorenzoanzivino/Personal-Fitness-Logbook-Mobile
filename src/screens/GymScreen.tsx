@@ -70,6 +70,10 @@ export const GymScreen: React.FC = () => {
     route.params?.initialSubTab || 'routines'
   );
 
+  const [trainerSection, setTrainerSection] = useState<'personal' | 'clients'>(
+    isDelegatedMode ? 'clients' : 'personal'
+  );
+
   useEffect(() => {
     if (route.params?.initialSubTab) {
       setActiveTab(route.params.initialSubTab);
@@ -504,84 +508,133 @@ export const GymScreen: React.FC = () => {
 
   return (
     <ScreenBackgroundWrapper style={styles.container}>
-      {/* RBAC Header: Trainer Delegation Switcher OR Client Status Banner */}
+      {/* RBAC Header: Trainer Section Switcher OR Client Status Banner */}
       {userRole === 'TRAINER' ? (
-        <View style={styles.delegationBar}>
-          <View style={styles.delegationHeaderRow}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <Text style={styles.delegationCaption}>GESTIONE SCHEDE:</Text>
-              <Text style={styles.delegationRoleBadge}>TRAINER</Text>
-            </View>
-            {isDelegatedMode && (
-              <Pressable
-                onPress={() => setSelectedClient(null)}
-                style={styles.exitDelegationBtn}
-                accessibilityRole="button"
-                accessibilityLabel="Torna alle mie schede personali"
-              >
-                <Text style={styles.exitDelegationBtnText}>✕ Torna a Personali</Text>
-              </Pressable>
-            )}
-          </View>
-
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.delegationChipsContainer}
-          >
-            {/* Chip Personale Trainer */}
+        <View style={styles.trainerSectionWrapper}>
+          {/* Top Segmented Tabs */}
+          <View style={styles.trainerSegmentContainer}>
             <Pressable
-              onPress={() => setSelectedClient(null)}
+              onPress={() => {
+                setTrainerSection('personal');
+                setSelectedClient(null);
+              }}
               style={[
-                styles.delegationChip,
-                !selectedClient && styles.delegationChipActive,
+                styles.trainerSegmentBtn,
+                trainerSection === 'personal' && styles.trainerSegmentBtnActive,
               ]}
+              accessibilityRole="tab"
+              accessibilityLabel="I Miei Allenamenti Personali"
             >
               <Text
                 style={[
-                  styles.delegationChipText,
-                  !selectedClient && styles.delegationChipTextActive,
+                  styles.trainerSegmentText,
+                  trainerSection === 'personal' && styles.trainerSegmentTextActive,
                 ]}
               >
-                👤 Le Mie Schede
+                🏋️ I Miei Allenamenti
               </Text>
             </Pressable>
 
-            {/* Chips Clienti */}
-            {(userProfile.clients || []).map((client) => {
-              const isSelected = selectedClient?.id === client.id;
-              return (
-                <Pressable
-                  key={client.id}
-                  onPress={() => setSelectedClient(client)}
-                  style={[
-                    styles.delegationChip,
-                    isSelected && styles.delegationChipActiveClient,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.delegationChipText,
-                      isSelected && styles.delegationChipTextActiveClient,
-                    ]}
-                  >
-                    👤 {client.name} (Cliente)
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
+            <Pressable
+              onPress={() => {
+                setTrainerSection('clients');
+                const firstClient = (userProfile.clients || [])[0] || null;
+                if (firstClient && !selectedClient) {
+                  setSelectedClient(firstClient);
+                }
+              }}
+              style={[
+                styles.trainerSegmentBtn,
+                trainerSection === 'clients' && styles.trainerSegmentBtnActive,
+              ]}
+              accessibilityRole="tab"
+              accessibilityLabel="Gestione Schede Clienti"
+            >
+              <Text
+                style={[
+                  styles.trainerSegmentText,
+                  trainerSection === 'clients' && styles.trainerSegmentTextActive,
+                ]}
+              >
+                👥 Gestione Schede Clienti
+              </Text>
+            </Pressable>
+          </View>
 
-          {/* Banner Modalità Delega Attiva */}
-          {isDelegatedMode && selectedClient && (
-            <View style={styles.delegationActiveBanner}>
-              <Text style={styles.delegationActiveTitle}>
-                🔄 MODALITÀ DELEGA: {selectedClient.name}
-              </Text>
-              <Text style={styles.delegationActiveDesc}>
-                Stai creando e modificando le schede per questa cliente. Le schede salvate avranno
-                owner_id: {selectedClient.id} e saranno sincronizzate sulla sua app.
-              </Text>
+          {/* Sub-bar specific for Clients Management */}
+          {trainerSection === 'clients' && (
+            <View style={styles.clientsManagerSubbar}>
+              {(userProfile.clients || []).length === 0 ? (
+                <View style={styles.emptyClientsBanner}>
+                  <Text style={styles.emptyClientsIcon}>👥</Text>
+                  <Text style={styles.emptyClientsTitle}>Nessun cliente registrato</Text>
+                  <Text style={styles.emptyClientsDesc}>
+                    Non hai ancora allievi collegati. Vai nella sezione Profilo per generare un codice OTP e registrare il tuo primo atleta.
+                  </Text>
+                  <Pressable
+                    onPress={() => navigation.navigate('Profile')}
+                    style={styles.goToProfileBtn}
+                    accessibilityRole="button"
+                    accessibilityLabel="Vai al Profilo per generare codici OTP"
+                  >
+                    <Text style={styles.goToProfileBtnText}>➔ Vai a Gestione Allievi</Text>
+                  </Pressable>
+                </View>
+              ) : (
+                <>
+                  <View style={styles.clientPickerHeaderRow}>
+                    <Text style={styles.clientPickerCaption}>ALLIEVO SELEZIONATO:</Text>
+                    <Pressable
+                      onPress={() => navigation.navigate('Profile')}
+                      style={styles.addClientPill}
+                      accessibilityRole="button"
+                      accessibilityLabel="Aggiungi nuovo allievo dal profilo"
+                    >
+                      <Text style={styles.addClientPillText}>+ Nuovo Allievo</Text>
+                    </Pressable>
+                  </View>
+
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.delegationChipsContainer}
+                  >
+                    {(userProfile.clients || []).map((client) => {
+                      const isSelected = selectedClient?.id === client.id;
+                      return (
+                        <Pressable
+                          key={client.id}
+                          onPress={() => setSelectedClient(client)}
+                          style={[
+                            styles.delegationChip,
+                            isSelected && styles.delegationChipActiveClient,
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.delegationChipText,
+                              isSelected && styles.delegationChipTextActiveClient,
+                            ]}
+                          >
+                            👤 {client.name}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </ScrollView>
+
+                  {selectedClient && (
+                    <View style={styles.delegationActiveBanner}>
+                      <Text style={styles.delegationActiveTitle}>
+                        📋 SCHEDE ATTIVE DI: {selectedClient.name.toUpperCase()}
+                      </Text>
+                      <Text style={styles.delegationActiveDesc}>
+                        Le schede create o modificate qui sotto sono assegnate direttamente a questo atleta e visibili nella sua app.
+                      </Text>
+                    </View>
+                  )}
+                </>
+              )}
             </View>
           )}
         </View>
@@ -2659,5 +2712,105 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.textSecondary,
     lineHeight: 16,
+  },
+  trainerSectionWrapper: {
+    backgroundColor: 'rgba(17, 24, 39, 0.95)',
+    borderBottomWidth: 1,
+    borderBottomColor: colors.borderLight,
+  },
+  trainerSegmentContainer: {
+    flexDirection: 'row',
+    padding: 8,
+    gap: 8,
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+  },
+  trainerSegmentBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  trainerSegmentBtnActive: {
+    backgroundColor: colors.surface,
+    borderColor: colors.accent,
+  },
+  trainerSegmentText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  trainerSegmentTextActive: {
+    color: colors.accent,
+    fontWeight: '800',
+  },
+  clientsManagerSubbar: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: 'rgba(236, 72, 153, 0.04)',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(236, 72, 153, 0.2)',
+  },
+  emptyClientsBanner: {
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 12,
+  },
+  emptyClientsIcon: {
+    fontSize: 32,
+    marginBottom: 6,
+  },
+  emptyClientsTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 4,
+  },
+  emptyClientsDesc: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 18,
+    marginBottom: 12,
+  },
+  goToProfileBtn: {
+    backgroundColor: colors.accent,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  goToProfileBtnText: {
+    color: '#000',
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  clientPickerHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  clientPickerCaption: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#EC4899',
+    letterSpacing: 0.5,
+  },
+  addClientPill: {
+    backgroundColor: 'rgba(236, 72, 153, 0.15)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#EC4899',
+  },
+  addClientPillText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#EC4899',
   },
 });

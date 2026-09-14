@@ -11,7 +11,6 @@ import {
   NewRoutineModal,
   MeasurementModal,
   UploadDietModal,
-  PdfViewerModal,
   ExerciseModal,
 } from '../screens/modals';
 
@@ -50,7 +49,6 @@ export const RootStackNavigator: React.FC = () => {
             <Stack.Screen name="NewRoutineModal" component={NewRoutineModal} />
             <Stack.Screen name="MeasurementModal" component={MeasurementModal} />
             <Stack.Screen name="UploadDietModal" component={UploadDietModal} />
-            <Stack.Screen name="PdfViewerModal" component={PdfViewerModal} />
             <Stack.Screen name="ExerciseModal" component={ExerciseModal} />
           </Stack.Group>
         </>

@@ -7,9 +7,9 @@ export const DEFAULT_FOLDERS: RoutineFolder[] = [];
 
 const STORAGE_KEYS = {
   EXERCISES: '@gym_exercises_v2',
-  ROUTINES: '@gym_routines_v2',
-  WORKOUTS: '@gym_workouts_v2',
-  FOLDERS: '@gym_folders_v2',
+  ROUTINES: '@gym_routines_v3',
+  WORKOUTS: '@gym_workouts_v3',
+  FOLDERS: '@gym_folders_v3',
 };
 
 export const gymStorage = {

@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  Image,
 } from 'react-native';
 import { colors } from '../../theme/colors';
 import { layout } from '../../theme/spacing';
@@ -16,6 +17,8 @@ import { typography } from '../../theme/typography';
 import { Card } from '../../components/Card';
 import { ScreenBackgroundWrapper } from '../../components/ScreenBackgroundWrapper';
 import { useAuth } from '../../context/AuthContext';
+
+const APP_LOGO = require('../../../assets/logo1.png');
 
 export const LoginScreen: React.FC = () => {
   const { login } = useAuth();
@@ -55,12 +58,6 @@ export const LoginScreen: React.FC = () => {
     }
   };
 
-  const handleFillDemo = (user: string, pass: string) => {
-    setUsername(user);
-    setPasswordOrOtp(pass);
-    setErrorMsg(null);
-  };
-
   return (
     <ScreenBackgroundWrapper>
       <KeyboardAvoidingView
@@ -75,10 +72,10 @@ export const LoginScreen: React.FC = () => {
         {/* Brand Header */}
         <View style={styles.brandContainer}>
           <View style={styles.logoBadge}>
-            <Text style={styles.logoIcon}>⚡</Text>
+            <Image source={APP_LOGO} style={styles.logoImage} resizeMode="contain" />
           </View>
-          <Text style={styles.appTitle}>FITNESS LOGBOOK</Text>
-          <Text style={styles.appSubtitle}>Personal Gym Hub & Provisioned Sync</Text>
+          <Text style={styles.appTitle}>MyTrainUp Logbook</Text>
+          <Text style={styles.appSubtitle}>Personal Gym Hub & Workout Tracking</Text>
           <View style={styles.roleGuardPill}>
             <Text style={styles.roleGuardText}>SISTEMA AD ACCESSO PROTETTO (RBAC)</Text>
           </View>
@@ -108,7 +105,7 @@ export const LoginScreen: React.FC = () => {
                 setUsername(val);
                 if (errorMsg) setErrorMsg(null);
               }}
-              placeholder="es. LorenzoAnzivino oppure Simona"
+              placeholder="es. Lorenzo oppure Username"
               placeholderTextColor={colors.textMuted}
               autoCapitalize="none"
               autoCorrect={false}
@@ -156,32 +153,6 @@ export const LoginScreen: React.FC = () => {
             )}
           </Pressable>
         </Card>
-
-        {/* Quick Demo Access Box */}
-        <Card style={styles.demoCard}>
-          <Text style={styles.demoTitle}>💡 CREDENZIALI DI ACCESSO VERIFICATE</Text>
-          <Text style={styles.demoDesc}>
-            Tocca una delle credenziali per pre-compilare il modulo ed effettuare il login di test:
-          </Text>
-
-          <View style={styles.demoButtonRow}>
-            <Pressable
-              onPress={() => handleFillDemo('LorenzoAnzivino', 'admin123')}
-              style={styles.demoPillTrainer}
-            >
-              <Text style={styles.demoPillLabel}>🏋️ Trainer (Admin)</Text>
-              <Text style={styles.demoPillCreds}>LorenzoAnzivino / admin123</Text>
-            </Pressable>
-
-            <Pressable
-              onPress={() => handleFillDemo('Simona', 'OTP123')}
-              style={styles.demoPillClient}
-            >
-              <Text style={styles.demoPillLabel}>🏃 Cliente (Sola Lettura)</Text>
-              <Text style={styles.demoPillCreds}>Simona / OTP123</Text>
-            </Pressable>
-          </View>
-        </Card>
       </ScrollView>
     </KeyboardAvoidingView>
     </ScreenBackgroundWrapper>
@@ -204,18 +175,17 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   logoBadge: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: 'rgba(14, 165, 233, 0.15)',
-    borderWidth: 2,
-    borderColor: colors.accent,
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 12,
+    backgroundColor: 'transparent',
   },
-  logoIcon: {
-    fontSize: 28,
+  logoImage: {
+    width: 72,
+    height: 72,
   },
   appTitle: {
     fontSize: 22,
@@ -322,53 +292,5 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '900',
     letterSpacing: 0.8,
-  },
-
-  // Demo Box
-  demoCard: {
-    backgroundColor: 'rgba(30, 41, 59, 0.6)',
-    borderColor: colors.border,
-    borderWidth: 1,
-  },
-  demoTitle: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: colors.textSecondary,
-    letterSpacing: 0.5,
-    marginBottom: 4,
-  },
-  demoDesc: {
-    fontSize: 12,
-    color: colors.textMuted,
-    marginBottom: 12,
-    lineHeight: 16,
-  },
-  demoButtonRow: {
-    gap: 8,
-  },
-  demoPillTrainer: {
-    backgroundColor: 'rgba(59, 130, 246, 0.15)',
-    borderWidth: 1,
-    borderColor: colors.accent,
-    borderRadius: 8,
-    padding: 10,
-  },
-  demoPillClient: {
-    backgroundColor: 'rgba(16, 185, 129, 0.15)',
-    borderWidth: 1,
-    borderColor: colors.emerald,
-    borderRadius: 8,
-    padding: 10,
-  },
-  demoPillLabel: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: colors.text,
-    marginBottom: 2,
-  },
-  demoPillCreds: {
-    fontSize: 11,
-    color: colors.textSecondary,
-    fontFamily: 'monospace',
   },
 });

@@ -18,7 +18,7 @@ export const ToastFeedback: React.FC<ToastFeedbackProps> = ({
   type,
   message,
   onDismiss,
-  duration = 3500,
+  duration = 2500,
 }) => {
   useEffect(() => {
     if (!visible) return;

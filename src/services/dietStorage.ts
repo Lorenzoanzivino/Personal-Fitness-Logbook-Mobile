@@ -1,40 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DietPdf } from '../types/diet';
 
-const STORAGE_KEY = '@diets_v2';
+const STORAGE_KEY = '@diets_v3';
 
-export const DEFAULT_DIETS: DietPdf[] = [
-  {
-    id: 1,
-    name: 'Dieta Ipertrofia Inverno 2026',
-    description: 'Rilasciata dal nutrizionista sportivo. Target: 2.850 kcal/die, ripartizione 40% Carboidrati, 30% Proteine, 30% Grassi.',
-    start_date: '2026-09-01',
-    end_date: null,
-    is_active: 1,
-    notes: 'Focus pre e post workout ad alta digeribilità.',
-    source_file_name: 'dieta_ipertrofia_v2.pdf',
-    file_path: null,
-    file_size: 2450000, // ~2.4 MB
-    mime_type: 'application/pdf',
-    created_at: '2026-09-01T08:00:00.000Z',
-    updated_at: '2026-09-01T08:00:00.000Z',
-  },
-  {
-    id: 2,
-    name: 'Fase Cut Estate 2026',
-    description: 'Protocollo di definizione ipocalorico pre-estivo. Target: 2.100 kcal/die.',
-    start_date: '2026-06-01',
-    end_date: '2026-08-31',
-    is_active: 0,
-    notes: 'Completata con successo.',
-    source_file_name: 'fase_cut_estate_2026.pdf',
-    file_path: null,
-    file_size: 1800000, // ~1.8 MB
-    mime_type: 'application/pdf',
-    created_at: '2026-06-01T08:00:00.000Z',
-    updated_at: '2026-06-01T08:00:00.000Z',
-  },
-];
+export const DEFAULT_DIETS: DietPdf[] = [];
 
 export const dietStorage = {
   async loadDiets(): Promise<DietPdf[]> {

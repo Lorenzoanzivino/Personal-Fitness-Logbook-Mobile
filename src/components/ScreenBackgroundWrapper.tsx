@@ -21,6 +21,7 @@ export const ScreenBackgroundWrapper: React.FC<ScreenBackgroundWrapperProps> = (
         style={styles.imageBackground}
         imageStyle={styles.image}
         resizeMode="contain"
+        blurRadius={5}
       >
         <View
           pointerEvents="none"

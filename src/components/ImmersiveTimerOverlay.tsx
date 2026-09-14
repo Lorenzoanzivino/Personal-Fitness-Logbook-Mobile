@@ -9,6 +9,7 @@ import {
   Vibration,
 } from 'react-native';
 import { useAudioPlayer } from 'expo-audio';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '../theme/colors';
 import { layout } from '../theme/spacing';
 
@@ -19,6 +20,7 @@ interface ImmersiveTimerOverlayProps {
   initialSeconds: number;
   exerciseName?: string;
   setNumberText?: string;
+  timerMode?: 'rest' | 'work';
   onComplete: () => void;
   onDismiss: () => void;
 }
@@ -28,9 +30,11 @@ export const ImmersiveTimerOverlay: React.FC<ImmersiveTimerOverlayProps> = ({
   initialSeconds,
   exerciseName,
   setNumberText,
+  timerMode = 'rest',
   onComplete,
   onDismiss,
 }) => {
+  const insets = useSafeAreaInsets();
   const [totalTime, setTotalTime] = useState(initialSeconds);
   const [timeLeft, setTimeLeft] = useState(initialSeconds);
   const [isRunning, setIsRunning] = useState(true);
@@ -245,13 +249,37 @@ export const ImmersiveTimerOverlay: React.FC<ImmersiveTimerOverlayProps> = ({
       animationType="fade"
       onRequestClose={handleDismiss}
     >
-      <View style={[styles.overlayContainer, isAlarmRinging && styles.overlayContainerAlarm]}>
+      <View
+        style={[
+          styles.overlayContainer,
+          isAlarmRinging && styles.overlayContainerAlarm,
+          { paddingBottom: insets.bottom + 20 },
+        ]}
+      >
         {/* Top Header info */}
         <View style={styles.headerRow}>
           <View style={{ flex: 1 }}>
-            <View style={[styles.recBadge, isAlarmRinging && styles.recBadgeAlarm]}>
-              <Text style={[styles.recTitle, isAlarmRinging && styles.recTitleAlarm]}>
-                {isAlarmRinging ? '🚨 SVEGLIA RECUPERO ATTIVA' : '⏱ TEMPO DI RECUPERO'}
+            <View
+              style={[
+                styles.recBadge,
+                timerMode === 'work' && styles.recBadgeWork,
+                isAlarmRinging && styles.recBadgeAlarm,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.recTitle,
+                  timerMode === 'work' && styles.recTitleWork,
+                  isAlarmRinging && styles.recTitleAlarm,
+                ]}
+              >
+                {isAlarmRinging
+                  ? timerMode === 'work'
+                    ? '🚨 LAVORO COMPLETATO!'
+                    : '🚨 SVEGLIA RECUPERO ATTIVA'
+                  : timerMode === 'work'
+                  ? '🔥 LAVORO ATTIVO (ISOMETRIA)'
+                  : '⏱ TEMPO DI RECUPERO'}
               </Text>
             </View>
             {exerciseName && (
@@ -279,6 +307,7 @@ export const ImmersiveTimerOverlay: React.FC<ImmersiveTimerOverlayProps> = ({
           <View
             style={[
               styles.timerCircleOuter,
+              timerMode === 'work' && styles.timerCircleOuterWork,
               isAlarmRinging && styles.timerCircleOuterAlarm,
             ]}
           >
@@ -286,18 +315,32 @@ export const ImmersiveTimerOverlay: React.FC<ImmersiveTimerOverlayProps> = ({
               <Text
                 style={[
                   styles.giantTimerText,
+                  timerMode === 'work' && !isAlarmRinging && styles.giantTimerTextWork,
                   isAlarmRinging && styles.giantTimerTextAlarm,
                 ]}
               >
                 {isAlarmRinging ? '0:00' : timeFormatted}
               </Text>
               <Text style={[styles.secondsLabel, isAlarmRinging && styles.secondsLabelAlarm]}>
-                {isAlarmRinging ? '⏰ TEMPO SCADUTO!' : `${timeLeft}s rimanenti`}
+                {isAlarmRinging
+                  ? timerMode === 'work'
+                    ? '⏰ TEMPO DI LAVORO TERMINATO!'
+                    : '⏰ TEMPO SCADUTO!'
+                  : `${timeLeft}s rimanenti`}
               </Text>
 
               {isAlarmRinging && (
-                <View style={styles.alarmNoticeBadge}>
-                  <Text style={styles.alarmNoticeText}>SPEGNI PER CONTINUARE</Text>
+                <View
+                  style={[
+                    styles.alarmNoticeBadge,
+                    timerMode === 'work' && styles.alarmNoticeBadgeWork,
+                  ]}
+                >
+                  <Text style={styles.alarmNoticeText}>
+                    {timerMode === 'work'
+                      ? 'CONFERMA PER AVVIARE IL RECUPERO'
+                      : 'SPEGNI PER CONTINUARE'}
+                  </Text>
                 </View>
               )}
 
@@ -316,7 +359,11 @@ export const ImmersiveTimerOverlay: React.FC<ImmersiveTimerOverlayProps> = ({
                 styles.progressBarFill,
                 {
                   width: `${progressPercent}%`,
-                  backgroundColor: isAlarmRinging ? colors.danger : colors.accent,
+                  backgroundColor: isAlarmRinging
+                    ? colors.danger
+                    : timerMode === 'work'
+                    ? colors.warning
+                    : colors.accent,
                 },
               ]}
             />
@@ -354,13 +401,24 @@ export const ImmersiveTimerOverlay: React.FC<ImmersiveTimerOverlayProps> = ({
           <View style={styles.alarmActionRow}>
             <Pressable
               onPress={handleStopAlarm}
-              style={styles.stopAlarmButton}
+              style={[
+                styles.stopAlarmButton,
+                timerMode === 'work' && styles.stopAlarmButtonWork,
+              ]}
               accessibilityRole="button"
-              accessibilityLabel="Spegni sveglia e continua allenamento"
+              accessibilityLabel={
+                timerMode === 'work'
+                  ? 'Completa fase attiva e avvia recupero'
+                  : 'Spegni sveglia e continua allenamento'
+              }
             >
-              <Text style={styles.stopAlarmButtonIcon}>🔔</Text>
+              <Text style={styles.stopAlarmButtonIcon}>
+                {timerMode === 'work' ? '✓' : '🔔'}
+              </Text>
               <Text style={styles.stopAlarmButtonText}>
-                SPEGNI SVEGLIA & CONTINUA
+                {timerMode === 'work'
+                  ? '✓ COMPLETA & AVVIA RECUPERO'
+                  : 'SPEGNI SVEGLIA & CONTINUA'}
               </Text>
             </Pressable>
           </View>
@@ -583,6 +641,29 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.5,
     shadowRadius: 14,
     elevation: 8,
+  },
+  stopAlarmButtonWork: {
+    backgroundColor: colors.emerald,
+    shadowColor: colors.emerald,
+  },
+  recBadgeWork: {
+    backgroundColor: 'rgba(245, 158, 11, 0.2)',
+    borderWidth: 1,
+    borderColor: colors.warning,
+  },
+  recTitleWork: {
+    color: colors.warning,
+  },
+  timerCircleOuterWork: {
+    borderColor: 'rgba(245, 158, 11, 0.6)',
+    backgroundColor: 'rgba(245, 158, 11, 0.08)',
+    borderWidth: 4,
+  },
+  giantTimerTextWork: {
+    color: colors.warning,
+  },
+  alarmNoticeBadgeWork: {
+    backgroundColor: colors.emeraldDark,
   },
   stopAlarmButtonIcon: {
     fontSize: 22,
