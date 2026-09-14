@@ -74,7 +74,7 @@ export const LoginScreen: React.FC = () => {
           <View style={styles.logoBadge}>
             <Image source={APP_LOGO} style={styles.logoImage} resizeMode="contain" />
           </View>
-          <Text style={styles.appTitle}>MyTrainUp Logbook</Text>
+          <Text style={styles.appTitle}>MY TRAIN UP</Text>
           <Text style={styles.appSubtitle}>Personal Gym Hub & Workout Tracking</Text>
           <View style={styles.roleGuardPill}>
             <Text style={styles.roleGuardText}>SISTEMA AD ACCESSO PROTETTO (RBAC)</Text>
@@ -149,7 +149,7 @@ export const LoginScreen: React.FC = () => {
             {loading ? (
               <ActivityIndicator color="#0F172A" />
             ) : (
-              <Text style={styles.loginButtonText}>ACCEDI AL LOGBOOK ➔</Text>
+              <Text style={styles.loginButtonText}>ACCEDI A MY TRAIN UP ➔</Text>
             )}
           </Pressable>
         </Card>
@@ -175,17 +175,21 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   logoBadge: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    backgroundColor: '#EA580F',
+    borderWidth: 3,
+    borderColor: colors.accent,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 12,
-    backgroundColor: 'transparent',
+    overflow: 'hidden',
+    marginBottom: 14,
   },
   logoImage: {
-    width: 72,
-    height: 72,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
   },
   appTitle: {
     fontSize: 22,

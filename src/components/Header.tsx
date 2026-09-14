@@ -145,7 +145,7 @@ const SCREEN_HELP_DATA: Record<string, HelpGuideInfo> = {
 
 const DEFAULT_HELP: HelpGuideInfo = {
   icon: '💡',
-  title: 'Guida di Fitness Logbook',
+  title: 'Guida di MY TRAIN UP',
   badge: 'Info',
   description: 'Applicazione completa per il tracciamento degli allenamenti in palestra, delle misurazioni corporee e dei piani alimentari.',
   tips: [
@@ -163,7 +163,7 @@ interface HeaderProps {
 }
 
 export const Header: React.FC<HeaderProps> = ({
-  title = 'MyTrainUp Logbook',
+  title = 'MY TRAIN UP',
   subtitle = 'Personal Gym Hub',
   connected = true,
   activeRouteName: routeProp,
@@ -326,17 +326,21 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   logoBadge: {
-    width: 38,
-    height: 38,
-    borderRadius: 8,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#EA580F',
+    borderWidth: 2,
+    borderColor: colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
     marginRight: 10,
-    backgroundColor: 'transparent',
   },
   logoImage: {
-    width: 38,
-    height: 38,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
   },
   titleContainer: {
     justifyContent: 'center',

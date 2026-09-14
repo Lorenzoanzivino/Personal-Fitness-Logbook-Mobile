@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "MyTrainUp Logbook",
-    "slug": "mytrainup-logbook",
-    "displayName": "MyTrainUp Logbook",
+    "name": "MY TRAIN UP",
+    "slug": "my-train-up",
+    "displayName": "MY TRAIN UP",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",

@@ -103,6 +103,7 @@ interface GymContextType {
 
   // Global actions
   resetEntireApp: () => Promise<void>;
+  reloadGymData: () => Promise<void>;
 
   // Progression & Overload helpers
   getLastPerformance: (exerciseId: number) => LastPerformance | null;
@@ -711,6 +712,7 @@ export const GymProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         deleteMultipleWorkouts,
         clearAllWorkouts,
         resetEntireApp,
+        reloadGymData: loadAllGymData,
         getLastPerformance,
         getPreviousPerformanceForExercise,
         getExerciseProgression,
