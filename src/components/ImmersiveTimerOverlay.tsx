@@ -6,9 +6,13 @@ import {
   Modal,
   Pressable,
   Platform,
+  Vibration,
 } from 'react-native';
+import { useAudioPlayer } from 'expo-audio';
 import { colors } from '../theme/colors';
 import { layout } from '../theme/spacing';
+
+const ALARM_ASSET = require('../../assets/alarm.wav');
 
 interface ImmersiveTimerOverlayProps {
   visible: boolean;
@@ -30,19 +34,42 @@ export const ImmersiveTimerOverlay: React.FC<ImmersiveTimerOverlayProps> = ({
   const [totalTime, setTotalTime] = useState(initialSeconds);
   const [timeLeft, setTimeLeft] = useState(initialSeconds);
   const [isRunning, setIsRunning] = useState(true);
+  const [isAlarmRinging, setIsAlarmRinging] = useState(false);
+
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const webAudioAlarmIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Sync state whenever timer opens with new duration
-  useEffect(() => {
-    if (visible) {
-      setTotalTime(initialSeconds);
-      setTimeLeft(initialSeconds);
-      setIsRunning(true);
+  // Expo Audio player for alarm
+  const player = useAudioPlayer(ALARM_ASSET);
+
+  // Stop all alarm sounds and vibrations
+  const stopAlarmSound = () => {
+    // 1. Stop Web Audio loop
+    if (webAudioAlarmIntervalRef.current) {
+      clearInterval(webAudioAlarmIntervalRef.current);
+      webAudioAlarmIntervalRef.current = null;
     }
-  }, [visible, initialSeconds]);
 
-  // Web Audio API Chime
-  const playChime = () => {
+    // 2. Stop Expo Audio player
+    try {
+      if (player) {
+        player.pause();
+        player.seekTo(0);
+      }
+    } catch {
+      // ignore
+    }
+
+    // 3. Stop vibration
+    try {
+      Vibration.cancel();
+    } catch {
+      // ignore
+    }
+  };
+
+  // Web Audio Alarm tone generator (cross-browser fallback)
+  const playWebAudioBeepCycle = () => {
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
       try {
         const AudioCtx =
@@ -51,48 +78,102 @@ export const ImmersiveTimerOverlay: React.FC<ImmersiveTimerOverlayProps> = ({
         if (!AudioCtx) return;
         const ctx = new AudioCtx();
 
-        // Arpeggio Re5 (587.33), Sol5 (783.99), Si5 (987.77), Re6 (1174.66)
-        const notes = [587.33, 783.99, 987.77, 1174.66];
-        notes.forEach((freq, idx) => {
+        // 4 rapid digital alarm beeps (880Hz, 880Hz, 880Hz, 1174Hz)
+        const beeps = [
+          { time: 0.0, freq: 880, dur: 0.1 },
+          { time: 0.16, freq: 880, dur: 0.1 },
+          { time: 0.32, freq: 880, dur: 0.1 },
+          { time: 0.48, freq: 1174.66, dur: 0.2 },
+        ];
+
+        beeps.forEach((b) => {
           const osc = ctx.createOscillator();
           const gain = ctx.createGain();
 
-          osc.type = 'sine';
-          osc.frequency.setValueAtTime(freq, ctx.currentTime + idx * 0.1);
+          osc.type = 'square';
+          osc.frequency.setValueAtTime(b.freq, ctx.currentTime + b.time);
 
-          const startTime = ctx.currentTime + idx * 0.1;
-          gain.gain.setValueAtTime(0.001, startTime);
-          gain.gain.linearRampToValueAtTime(0.35, startTime + 0.02);
-          gain.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.4);
+          const start = ctx.currentTime + b.time;
+          gain.gain.setValueAtTime(0.001, start);
+          gain.gain.linearRampToValueAtTime(0.35, start + 0.02);
+          gain.gain.exponentialRampToValueAtTime(0.0001, start + b.dur);
 
           osc.connect(gain);
           gain.connect(ctx.destination);
 
-          osc.start(startTime);
-          osc.stop(startTime + 0.45);
+          osc.start(start);
+          osc.stop(start + b.dur + 0.02);
         });
       } catch (err) {
-        console.warn('Audio chime fallback:', err);
+        console.warn('Web Audio Alarm error:', err);
       }
     }
   };
+
+  // Start continuous alarm loop
+  const triggerAlarm = () => {
+    setIsAlarmRinging(true);
+
+    // 1. Play native expo-audio
+    try {
+      if (player) {
+        player.loop = true;
+        player.play();
+      }
+    } catch (e) {
+      console.warn('Expo audio play warning:', e);
+    }
+
+    // 2. Play Web Audio loop
+    if (Platform.OS === 'web') {
+      playWebAudioBeepCycle();
+      if (!webAudioAlarmIntervalRef.current) {
+        webAudioAlarmIntervalRef.current = setInterval(() => {
+          playWebAudioBeepCycle();
+        }, 1100);
+      }
+    }
+
+    // 3. Continuous Vibration pattern
+    try {
+      // 0ms delay, 400ms vibrate, 200ms pause, 400ms vibrate, 200ms pause, 600ms pause
+      Vibration.vibrate([0, 400, 200, 400, 200, 400, 600], true);
+    } catch (e) {
+      console.warn('Vibration error:', e);
+    }
+  };
+
+  // Sync state whenever timer opens with new duration
+  useEffect(() => {
+    if (visible) {
+      setTotalTime(initialSeconds);
+      setTimeLeft(initialSeconds);
+      setIsRunning(true);
+      setIsAlarmRinging(false);
+      stopAlarmSound();
+    } else {
+      stopAlarmSound();
+    }
+
+    return () => {
+      stopAlarmSound();
+    };
+  }, [visible, initialSeconds]);
 
   // Countdown timer loop
   useEffect(() => {
     if (!visible) {
       if (intervalRef.current) clearInterval(intervalRef.current);
+      stopAlarmSound();
       return;
     }
 
-    if (isRunning && timeLeft > 0) {
+    if (isRunning && timeLeft > 0 && !isAlarmRinging) {
       intervalRef.current = setInterval(() => {
         setTimeLeft((prev) => {
           if (prev <= 1) {
             if (intervalRef.current) clearInterval(intervalRef.current);
-            playChime();
-            setTimeout(() => {
-              onComplete();
-            }, 300);
+            triggerAlarm();
             return 0;
           }
           return prev - 1;
@@ -105,20 +186,47 @@ export const ImmersiveTimerOverlay: React.FC<ImmersiveTimerOverlayProps> = ({
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [visible, isRunning, timeLeft, onComplete]);
+  }, [visible, isRunning, timeLeft, isAlarmRinging]);
 
   if (!visible) return null;
 
   const handleTogglePause = () => {
+    if (isAlarmRinging) return;
     setIsRunning(!isRunning);
   };
 
-  const handleSkip = () => {
-    if (intervalRef.current) clearInterval(intervalRef.current);
+  // Athlete explicitly turns off alarm to continue
+  const handleStopAlarm = () => {
+    stopAlarmSound();
+    setIsAlarmRinging(false);
     onComplete();
   };
 
+  // Skip before alarm rings
+  const handleSkip = () => {
+    if (intervalRef.current) clearInterval(intervalRef.current);
+    stopAlarmSound();
+    setIsAlarmRinging(false);
+    onComplete();
+  };
+
+  const handleDismiss = () => {
+    if (intervalRef.current) clearInterval(intervalRef.current);
+    stopAlarmSound();
+    setIsAlarmRinging(false);
+    onDismiss();
+  };
+
   const handleAddSeconds = (delta: number) => {
+    if (isAlarmRinging) {
+      // If user adds time during alarm, resume countdown
+      stopAlarmSound();
+      setIsAlarmRinging(false);
+      setTimeLeft(Math.max(1, delta));
+      setTotalTime(Math.max(totalTime, delta));
+      setIsRunning(true);
+      return;
+    }
     setTimeLeft((prev) => Math.max(0, prev + delta));
     setTotalTime((prev) => Math.max(prev, prev + delta));
   };
@@ -135,13 +243,17 @@ export const ImmersiveTimerOverlay: React.FC<ImmersiveTimerOverlayProps> = ({
       transparent
       visible={visible}
       animationType="fade"
-      onRequestClose={onDismiss}
+      onRequestClose={handleDismiss}
     >
-      <View style={styles.overlayContainer}>
+      <View style={[styles.overlayContainer, isAlarmRinging && styles.overlayContainerAlarm]}>
         {/* Top Header info */}
         <View style={styles.headerRow}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.recTitle}>TEMPO DI RECUPERO</Text>
+            <View style={[styles.recBadge, isAlarmRinging && styles.recBadgeAlarm]}>
+              <Text style={[styles.recTitle, isAlarmRinging && styles.recTitleAlarm]}>
+                {isAlarmRinging ? '🚨 SVEGLIA RECUPERO ATTIVA' : '⏱ TEMPO DI RECUPERO'}
+              </Text>
+            </View>
             {exerciseName && (
               <Text style={styles.exNameText} numberOfLines={1}>
                 {exerciseName}
@@ -153,10 +265,10 @@ export const ImmersiveTimerOverlay: React.FC<ImmersiveTimerOverlayProps> = ({
           </View>
 
           <Pressable
-            onPress={onDismiss}
+            onPress={handleDismiss}
             style={styles.closeOverlayBtn}
             accessibilityRole="button"
-            accessibilityLabel="Chiudi timer senza completare"
+            accessibilityLabel="Chiudi timer"
           >
             <Text style={styles.closeOverlayBtnText}>✕</Text>
           </Pressable>
@@ -164,11 +276,32 @@ export const ImmersiveTimerOverlay: React.FC<ImmersiveTimerOverlayProps> = ({
 
         {/* Center Giant Timer Display */}
         <View style={styles.centerSection}>
-          <View style={styles.timerCircleOuter}>
+          <View
+            style={[
+              styles.timerCircleOuter,
+              isAlarmRinging && styles.timerCircleOuterAlarm,
+            ]}
+          >
             <View style={styles.timerCircleInner}>
-              <Text style={styles.giantTimerText}>{timeFormatted}</Text>
-              <Text style={styles.secondsLabel}>{timeLeft}s rimanenti</Text>
-              {!isRunning && (
+              <Text
+                style={[
+                  styles.giantTimerText,
+                  isAlarmRinging && styles.giantTimerTextAlarm,
+                ]}
+              >
+                {isAlarmRinging ? '0:00' : timeFormatted}
+              </Text>
+              <Text style={[styles.secondsLabel, isAlarmRinging && styles.secondsLabelAlarm]}>
+                {isAlarmRinging ? '⏰ TEMPO SCADUTO!' : `${timeLeft}s rimanenti`}
+              </Text>
+
+              {isAlarmRinging && (
+                <View style={styles.alarmNoticeBadge}>
+                  <Text style={styles.alarmNoticeText}>SPEGNI PER CONTINUARE</Text>
+                </View>
+              )}
+
+              {!isAlarmRinging && !isRunning && (
                 <View style={styles.pausedBadge}>
                   <Text style={styles.pausedBadgeText}>IN PAUSA</Text>
                 </View>
@@ -178,57 +311,83 @@ export const ImmersiveTimerOverlay: React.FC<ImmersiveTimerOverlayProps> = ({
 
           {/* Progress bar */}
           <View style={styles.progressBarTrack}>
-            <View style={[styles.progressBarFill, { width: `${progressPercent}%` }]} />
+            <View
+              style={[
+                styles.progressBarFill,
+                {
+                  width: `${progressPercent}%`,
+                  backgroundColor: isAlarmRinging ? colors.danger : colors.accent,
+                },
+              ]}
+            />
           </View>
         </View>
 
-        {/* Quick Adjustment Pills (-15s, +15s) */}
-        <View style={styles.adjustRow}>
-          <Pressable
-            onPress={() => handleAddSeconds(-15)}
-            style={styles.adjustPill}
-          >
-            <Text style={styles.adjustPillText}>-15s</Text>
-          </Pressable>
+        {/* Quick Adjustment Pills (-15s, +15s, +30s) */}
+        {!isAlarmRinging && (
+          <View style={styles.adjustRow}>
+            <Pressable
+              onPress={() => handleAddSeconds(-15)}
+              style={styles.adjustPill}
+            >
+              <Text style={styles.adjustPillText}>-15s</Text>
+            </Pressable>
 
-          <Pressable
-            onPress={() => handleAddSeconds(15)}
-            style={styles.adjustPill}
-          >
-            <Text style={styles.adjustPillText}>+15s</Text>
-          </Pressable>
+            <Pressable
+              onPress={() => handleAddSeconds(15)}
+              style={styles.adjustPill}
+            >
+              <Text style={styles.adjustPillText}>+15s</Text>
+            </Pressable>
 
-          <Pressable
-            onPress={() => handleAddSeconds(30)}
-            style={styles.adjustPill}
-          >
-            <Text style={styles.adjustPillText}>+30s</Text>
-          </Pressable>
-        </View>
+            <Pressable
+              onPress={() => handleAddSeconds(30)}
+              style={styles.adjustPill}
+            >
+              <Text style={styles.adjustPillText}>+30s</Text>
+            </Pressable>
+          </View>
+        )}
 
         {/* Bottom Command Buttons */}
-        <View style={styles.bottomButtonsRow}>
-          <Pressable
-            onPress={handleTogglePause}
-            style={[
-              styles.actionButton,
-              isRunning ? styles.pauseButton : styles.resumeButton,
-            ]}
-          >
-            <Text style={styles.actionButtonText}>
-              {isRunning ? '⏸ PAUSA' : '▶ RIPRENDI'}
-            </Text>
-          </Pressable>
+        {isAlarmRinging ? (
+          <View style={styles.alarmActionRow}>
+            <Pressable
+              onPress={handleStopAlarm}
+              style={styles.stopAlarmButton}
+              accessibilityRole="button"
+              accessibilityLabel="Spegni sveglia e continua allenamento"
+            >
+              <Text style={styles.stopAlarmButtonIcon}>🔔</Text>
+              <Text style={styles.stopAlarmButtonText}>
+                SPEGNI SVEGLIA & CONTINUA
+              </Text>
+            </Pressable>
+          </View>
+        ) : (
+          <View style={styles.bottomButtonsRow}>
+            <Pressable
+              onPress={handleTogglePause}
+              style={[
+                styles.actionButton,
+                isRunning ? styles.pauseButton : styles.resumeButton,
+              ]}
+            >
+              <Text style={styles.actionButtonText}>
+                {isRunning ? '⏸ PAUSA' : '▶ RIPRENDI'}
+              </Text>
+            </Pressable>
 
-          <Pressable
-            onPress={handleSkip}
-            style={[styles.actionButton, styles.skipButton]}
-          >
-            <Text style={[styles.actionButtonText, styles.skipButtonText]}>
-              ⏭ SALTA & COMPLETA
-            </Text>
-          </Pressable>
-        </View>
+            <Pressable
+              onPress={handleSkip}
+              style={[styles.actionButton, styles.skipButton]}
+            >
+              <Text style={[styles.actionButtonText, styles.skipButtonText]}>
+                ⏭ SALTA & COMPLETA
+              </Text>
+            </Pressable>
+          </View>
+        )}
       </View>
     </Modal>
   );
@@ -237,23 +396,41 @@ export const ImmersiveTimerOverlay: React.FC<ImmersiveTimerOverlayProps> = ({
 const styles = StyleSheet.create({
   overlayContainer: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.90)',
+    backgroundColor: 'rgba(0, 0, 0, 0.92)',
     justifyContent: 'space-between',
     paddingHorizontal: 24,
     paddingTop: 54,
     paddingBottom: 40,
+  },
+  overlayContainerAlarm: {
+    backgroundColor: 'rgba(25, 6, 6, 0.96)',
   },
   headerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
   },
+  recBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    backgroundColor: 'rgba(14, 165, 233, 0.15)',
+    marginBottom: 6,
+  },
+  recBadgeAlarm: {
+    backgroundColor: 'rgba(239, 68, 68, 0.25)',
+    borderWidth: 1,
+    borderColor: colors.danger,
+  },
   recTitle: {
     fontSize: 12,
     fontWeight: '800',
-    letterSpacing: 1.5,
+    letterSpacing: 1.2,
     color: colors.accent,
-    marginBottom: 4,
+  },
+  recTitleAlarm: {
+    color: colors.danger,
   },
   exNameText: {
     fontSize: 20,
@@ -294,6 +471,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: 'rgba(14, 165, 233, 0.05)',
   },
+  timerCircleOuterAlarm: {
+    borderColor: colors.danger,
+    backgroundColor: 'rgba(239, 68, 68, 0.18)',
+    borderWidth: 5,
+    shadowColor: colors.danger,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 24,
+    elevation: 12,
+  },
   timerCircleInner: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -305,11 +492,33 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
     fontVariant: ['tabular-nums'],
   },
+  giantTimerTextAlarm: {
+    color: colors.danger,
+  },
   secondsLabel: {
     fontSize: 15,
     fontWeight: '600',
     color: colors.textSecondary,
     marginTop: 4,
+  },
+  secondsLabelAlarm: {
+    color: colors.danger,
+    fontWeight: '800',
+    fontSize: 16,
+    letterSpacing: 0.5,
+  },
+  alarmNoticeBadge: {
+    marginTop: 12,
+    backgroundColor: colors.danger,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  alarmNoticeText: {
+    color: colors.white,
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 1,
   },
   pausedBadge: {
     marginTop: 10,
@@ -357,6 +566,32 @@ const styles = StyleSheet.create({
     color: colors.white,
     fontWeight: '700',
     fontSize: 13,
+  },
+  alarmActionRow: {
+    width: '100%',
+  },
+  stopAlarmButton: {
+    backgroundColor: colors.danger,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    paddingVertical: 18,
+    borderRadius: layout.borderRadiusMd,
+    shadowColor: colors.danger,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.5,
+    shadowRadius: 14,
+    elevation: 8,
+  },
+  stopAlarmButtonIcon: {
+    fontSize: 22,
+  },
+  stopAlarmButtonText: {
+    color: colors.white,
+    fontSize: 16,
+    fontWeight: '900',
+    letterSpacing: 0.8,
   },
   bottomButtonsRow: {
     flexDirection: 'row',

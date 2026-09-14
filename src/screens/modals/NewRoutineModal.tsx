@@ -8,6 +8,7 @@ import {
   Pressable,
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RootStackParamList, RootStackNavigationProp } from '../../types/navigation';
 import { useGym } from '../../context/GymContext';
 import { RoutineExercise, SetType, BandAssistance, ExerciseType, SetDropStep } from '../../types/workout';
@@ -81,6 +82,7 @@ interface BuilderExerciseState {
 export const NewRoutineModal: React.FC = () => {
   const navigation = useNavigation<RootStackNavigationProp>();
   const route = useRoute<NewRoutineModalRouteProp>();
+  const insets = useSafeAreaInsets();
   const {
     exercises,
     routines,
@@ -193,18 +195,18 @@ export const NewRoutineModal: React.FC = () => {
               loadedDrops = s.drops.map((d, dIdx) => ({
                 id: d.id || `d-${dIdx}-${Date.now()}`,
                 kg: d.kg || 0,
-                reps: d.reps || 8,
-                restSeconds: d.rest_seconds || 20,
+                reps: d.reps || 10,
+                restSeconds: d.rest_seconds ?? (s.set_type === 'rest_pause' ? 10 : 0),
               }));
             } else if (s.set_type === 'dropset') {
               loadedDrops = [
-                { id: `d-1-${sIdx}`, kg: s.target_weight_kg || 0, reps: s.target_reps || 8 },
-                { id: `d-2-${sIdx}`, kg: s.dropset_weight_kg || 0, reps: s.target_reps || 8 },
+                { id: `d-1-${sIdx}`, kg: s.target_weight_kg || 0, reps: s.target_reps || 10, restSeconds: 0 },
+                { id: `d-2-${sIdx}`, kg: s.dropset_weight_kg || 0, reps: s.target_reps || 10, restSeconds: 0 },
               ];
             } else if (s.set_type === 'rest_pause') {
               loadedDrops = [
-                { id: `rp-1-${sIdx}`, kg: s.target_weight_kg || 0, reps: s.target_reps || 10, restSeconds: 20 },
-                { id: `rp-2-${sIdx}`, kg: s.target_weight_kg || 0, reps: 4, restSeconds: 20 },
+                { id: `rp-1-${sIdx}`, kg: s.target_weight_kg || 0, reps: s.target_reps || 10, restSeconds: 10 },
+                { id: `rp-2-${sIdx}`, kg: s.target_weight_kg || 0, reps: 10, restSeconds: 10 },
               ];
             }
 
@@ -365,16 +367,16 @@ export const NewRoutineModal: React.FC = () => {
 
     let initialDrops: BuilderDropState[] | undefined = undefined;
     if (type === 'dropset') {
-      // 2 slot di drop di default
+      // 2 slot di drop di default (Stripping) con pausa intra es. 0s
       initialDrops = [
-        { id: `drop-${Date.now()}-1`, kg: 0, reps: 8 },
-        { id: `drop-${Date.now()}-2`, kg: 0, reps: 8 },
+        { id: `drop-${Date.now()}-1`, kg: 0, reps: 10, restSeconds: 0 },
+        { id: `drop-${Date.now()}-2`, kg: 0, reps: 10, restSeconds: 0 },
       ];
     } else if (type === 'rest_pause') {
-      // 2 slot di rest-pause di default
+      // 2 slot di rest-pause di default con pausa intra es. 10s
       initialDrops = [
-        { id: `drop-${Date.now()}-1`, kg: 0, reps: 10, restSeconds: 20 },
-        { id: `drop-${Date.now()}-2`, kg: 0, reps: 4, restSeconds: 20 },
+        { id: `drop-${Date.now()}-1`, kg: 0, reps: 10, restSeconds: 10 },
+        { id: `drop-${Date.now()}-2`, kg: 0, reps: 10, restSeconds: 10 },
       ];
     }
 
@@ -416,8 +418,8 @@ export const NewRoutineModal: React.FC = () => {
     set.drops.push({
       id: `drop-${Date.now()}-${dropNumber}`,
       kg: lastDrop ? Math.max(0, Math.round(lastDrop.kg * 0.8)) : 0,
-      reps: lastDrop ? lastDrop.reps : 8,
-      restSeconds: set.setType === 'rest_pause' ? 20 : undefined,
+      reps: lastDrop ? lastDrop.reps : 10,
+      restSeconds: set.setType === 'rest_pause' ? 10 : 0,
     });
 
     setRoutineExercises(updated);
@@ -1080,8 +1082,10 @@ export const NewRoutineModal: React.FC = () => {
                                 </>
                               )}
 
-                          <View style={[styles.inputMiniCol, { width: 54 }]}>
-                            <Text style={styles.miniLabel}>RECUPERO</Text>
+                          <View style={[styles.inputMiniCol, { width: (s.setType === 'dropset' || s.setType === 'rest_pause') ? 72 : 54 }]}>
+                            <Text style={styles.miniLabel}>
+                              {s.setType === 'dropset' || s.setType === 'rest_pause' ? 'REC. FINALE' : 'RECUPERO'}
+                            </Text>
                             <TextInput
                               style={styles.setInp}
                               keyboardType="numeric"
@@ -1108,89 +1112,111 @@ export const NewRoutineModal: React.FC = () => {
                         {/* Dynamic Drops Rows for Stripping & Rest-Pause */}
                         {(s.setType === 'dropset' || s.setType === 'rest_pause') && (
                           <View style={styles.dropsContainer}>
-                            <Text style={styles.dropsContainerTitle}>
-                              {s.setType === 'dropset'
-                                ? '⚡ SCALATE STRIPPING (MINIMO 2 STEP)'
-                                : '⏱ SLOT REST-PAUSE (MINIMO 2 STEP)'}
-                            </Text>
-
-                            {(s.drops || []).map((drop, dropIdx) => (
-                              <View key={drop.id} style={styles.dropStepRow}>
-                                <Text style={styles.dropStepBadge}>
-                                  Step {dropIdx + 1}
+                            <View style={styles.dropsHeaderRow}>
+                              <Text style={styles.dropsContainerTitle}>
+                                {s.setType === 'dropset'
+                                  ? '⚡ SCALATE STRIPPING (MINIMO 2 STEP)'
+                                  : '⏱ SLOT REST-PAUSE (MINIMO 2 STEP)'}
+                              </Text>
+                              <View style={styles.finalRestBadge}>
+                                <Text style={styles.finalRestBadgeText}>
+                                  Rec. Finale: {s.restSeconds}s
                                 </Text>
+                              </View>
+                            </View>
 
-                                <View style={styles.dropInpCol}>
-                                  <Text style={styles.miniLabel}>KG</Text>
-                                  <TextInput
-                                    style={styles.dropInp}
-                                    keyboardType="decimal-pad"
-                                    value={drop.kg === 0 ? '' : String(drop.kg)}
-                                    onChangeText={(val) => {
-                                      const num = parseFloat(val.replace(',', '.'));
-                                      const up = [...routineExercises];
-                                      if (up[exIdx].sets[sIdx].drops) {
-                                        up[exIdx].sets[sIdx].drops![dropIdx].kg = isNaN(num) ? 0 : num;
-                                      }
-                                      setRoutineExercises(up);
-                                    }}
-                                    placeholder="0"
-                                    placeholderTextColor={colors.textMuted}
-                                  />
-                                </View>
+                            {(s.drops || []).map((drop, dropIdx) => {
+                              const isLastDrop = dropIdx === (s.drops?.length || 0) - 1;
+                              return (
+                                <View key={drop.id} style={styles.dropStepRow}>
+                                  <Text style={styles.dropStepBadge}>
+                                    Step {dropIdx + 1}
+                                  </Text>
 
-                                <View style={styles.dropInpCol}>
-                                  <Text style={styles.miniLabel}>REPS</Text>
-                                  <TextInput
-                                    style={styles.dropInp}
-                                    keyboardType="numeric"
-                                    value={drop.reps === 0 ? '' : String(drop.reps)}
-                                    onChangeText={(val) => {
-                                      const num = parseInt(val, 10);
-                                      const up = [...routineExercises];
-                                      if (up[exIdx].sets[sIdx].drops) {
-                                        up[exIdx].sets[sIdx].drops![dropIdx].reps = isNaN(num) ? 0 : num;
-                                      }
-                                      setRoutineExercises(up);
-                                    }}
-                                    placeholder="8"
-                                    placeholderTextColor={colors.textMuted}
-                                  />
-                                </View>
-
-                                {s.setType === 'rest_pause' && (
                                   <View style={styles.dropInpCol}>
-                                    <Text style={styles.miniLabel}>PAUSA (S)</Text>
+                                    <Text style={styles.miniLabel}>KG</Text>
+                                    <TextInput
+                                      style={styles.dropInp}
+                                      keyboardType="decimal-pad"
+                                      value={drop.kg === 0 ? '' : String(drop.kg)}
+                                      onChangeText={(val) => {
+                                        const num = parseFloat(val.replace(',', '.'));
+                                        const up = [...routineExercises];
+                                        if (up[exIdx].sets[sIdx].drops) {
+                                          up[exIdx].sets[sIdx].drops![dropIdx].kg = isNaN(num) ? 0 : num;
+                                        }
+                                        setRoutineExercises(up);
+                                      }}
+                                      placeholder="0"
+                                      placeholderTextColor={colors.textMuted}
+                                    />
+                                  </View>
+
+                                  <View style={styles.dropInpCol}>
+                                    <Text style={styles.miniLabel}>REPS</Text>
                                     <TextInput
                                       style={styles.dropInp}
                                       keyboardType="numeric"
-                                      value={String(drop.restSeconds || 20)}
+                                      value={drop.reps === 0 ? '' : String(drop.reps)}
                                       onChangeText={(val) => {
                                         const num = parseInt(val, 10);
                                         const up = [...routineExercises];
                                         if (up[exIdx].sets[sIdx].drops) {
-                                          up[exIdx].sets[sIdx].drops![dropIdx].restSeconds = isNaN(num)
-                                            ? 20
-                                            : num;
+                                          up[exIdx].sets[sIdx].drops![dropIdx].reps = isNaN(num) ? 0 : num;
                                         }
                                         setRoutineExercises(up);
                                       }}
-                                      placeholder="20s"
+                                      placeholder="10"
                                       placeholderTextColor={colors.textMuted}
                                     />
                                   </View>
-                                )}
 
-                                {(s.drops || []).length > 2 && (
-                                  <Pressable
-                                    onPress={() => handleRemoveDropSlot(exIdx, sIdx, dropIdx)}
-                                    style={styles.delDropBtn}
-                                  >
-                                    <Text style={styles.delDropText}>✕</Text>
-                                  </Pressable>
-                                )}
-                              </View>
-                            ))}
+                                  {!isLastDrop ? (
+                                    <View style={styles.dropInpCol}>
+                                      <Text style={styles.miniLabel}>PAUSA (S)</Text>
+                                      <TextInput
+                                        style={styles.dropInp}
+                                        keyboardType="numeric"
+                                        value={String(drop.restSeconds ?? (s.setType === 'rest_pause' ? 10 : 0))}
+                                        onChangeText={(val) => {
+                                          const num = parseInt(val, 10);
+                                          const up = [...routineExercises];
+                                          if (up[exIdx].sets[sIdx].drops) {
+                                            up[exIdx].sets[sIdx].drops![dropIdx].restSeconds = isNaN(num)
+                                              ? 0
+                                              : num;
+                                          }
+                                          setRoutineExercises(up);
+                                        }}
+                                        placeholder={s.setType === 'rest_pause' ? '10s' : '0s'}
+                                        placeholderTextColor={colors.textMuted}
+                                      />
+                                    </View>
+                                  ) : (
+                                    <View style={styles.lastDropFinalBox}>
+                                      <Text style={styles.lastDropFinalLabel}>FINE STEP</Text>
+                                      <Text style={styles.lastDropFinalSub}>Poi rec. {s.restSeconds}s</Text>
+                                    </View>
+                                  )}
+
+                                  {(s.drops || []).length > 2 && (
+                                    <Pressable
+                                      onPress={() => handleRemoveDropSlot(exIdx, sIdx, dropIdx)}
+                                      style={styles.delDropBtn}
+                                    >
+                                      <Text style={styles.delDropText}>✕</Text>
+                                    </Pressable>
+                                  )}
+                                </View>
+                              );
+                            })}
+
+                            {/* Explanatory note */}
+                            <View style={styles.dropExplainerBox}>
+                              <Text style={styles.dropExplainerText}>
+                                💡 Pause intra-serie tra i mini-step. Al termine dell'ultimo step scatterà il Recupero Finale ({s.restSeconds}s) prima della serie successiva.
+                              </Text>
+                            </View>
 
                             {/* Add Drop / Slot button */}
                             <Pressable
@@ -1410,7 +1436,7 @@ export const NewRoutineModal: React.FC = () => {
       />
 
       {/* Footer Submit */}
-      <View style={styles.footer}>
+      <View style={[styles.footer, { paddingBottom: Math.max(16, insets.bottom + 8) }]}>
         <Pressable
           onPress={handleSaveRoutine}
           style={({ pressed }) => [
@@ -1754,11 +1780,29 @@ const styles = StyleSheet.create({
     borderLeftWidth: 2,
     borderLeftColor: colors.danger,
   },
+  dropsHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
   dropsContainerTitle: {
     fontSize: 10,
     fontWeight: '800',
     color: colors.danger,
-    marginBottom: 6,
+  },
+  finalRestBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.3)',
+  },
+  finalRestBadgeText: {
+    color: colors.danger,
+    fontSize: 10,
+    fontWeight: '800',
   },
   dropStepRow: {
     flexDirection: 'row',
@@ -1770,7 +1814,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     color: colors.textSecondary,
-    width: 50,
+    width: 48,
   },
   dropInpCol: {
     flex: 1,
@@ -1785,6 +1829,27 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     textAlign: 'center',
   },
+  lastDropFinalBox: {
+    flex: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: 4,
+    paddingVertical: 3,
+    paddingHorizontal: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  lastDropFinalLabel: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: colors.textSecondary,
+  },
+  lastDropFinalSub: {
+    fontSize: 8,
+    fontWeight: '700',
+    color: colors.accent,
+  },
   delDropBtn: {
     width: 24,
     height: 24,
@@ -1795,6 +1860,20 @@ const styles = StyleSheet.create({
     color: colors.danger,
     fontSize: 14,
     fontWeight: '700',
+  },
+  dropExplainerBox: {
+    backgroundColor: 'rgba(14, 165, 233, 0.08)',
+    borderRadius: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    marginVertical: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(14, 165, 233, 0.15)',
+  },
+  dropExplainerText: {
+    fontSize: 10,
+    color: colors.textSecondary,
+    lineHeight: 14,
   },
   addDropSlotBtn: {
     alignSelf: 'flex-start',

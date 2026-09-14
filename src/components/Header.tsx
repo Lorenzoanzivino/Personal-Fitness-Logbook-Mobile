@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { colors } from '../theme/colors';
 import { layout } from '../theme/spacing';
 
@@ -14,9 +15,27 @@ export const Header: React.FC<HeaderProps> = ({
   subtitle = 'Personal Gym Hub',
   connected = true,
 }) => {
+  const navigation = useNavigation<any>();
+
+  const handlePressLogo = () => {
+    try {
+      navigation.navigate('MainTabs', { screen: 'Home' });
+    } catch {
+      navigation.navigate('Home');
+    }
+  };
+
   return (
     <View style={styles.header}>
-      <View style={styles.brandRow}>
+      <Pressable
+        onPress={handlePressLogo}
+        style={({ pressed }) => [
+          styles.brandRow,
+          { opacity: pressed ? 0.75 : 1 },
+        ]}
+        accessibilityRole="button"
+        accessibilityLabel="Torna alla Home"
+      >
         <View style={styles.logoBadge}>
           <Text style={styles.logoIcon}>⚡</Text>
         </View>
@@ -24,7 +43,7 @@ export const Header: React.FC<HeaderProps> = ({
           <Text style={styles.title}>{title}</Text>
           <Text style={styles.subtitle}>{subtitle}</Text>
         </View>
-      </View>
+      </Pressable>
 
       <View style={styles.statusBadge}>
         <View

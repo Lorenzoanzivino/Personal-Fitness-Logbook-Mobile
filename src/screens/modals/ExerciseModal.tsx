@@ -8,6 +8,7 @@ import {
   Pressable,
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RootStackParamList, RootStackNavigationProp } from '../../types/navigation';
 import { useGym } from '../../context/GymContext';
 import { MuscleGroup, ExerciseType } from '../../types/workout';
@@ -41,6 +42,7 @@ const EXERCISE_TYPES: Array<{ key: ExerciseType; label: string; desc: string }> 
 export const ExerciseModal: React.FC = () => {
   const navigation = useNavigation<RootStackNavigationProp>();
   const route = useRoute<ExerciseModalRouteProp>();
+  const insets = useSafeAreaInsets();
   const { addExercise, updateExercise, exercises } = useGym();
 
   const exerciseId = route.params?.exerciseId;
@@ -290,7 +292,7 @@ export const ExerciseModal: React.FC = () => {
         </Card>
       </ScrollView>
 
-      <View style={styles.footer}>
+      <View style={[styles.footer, { paddingBottom: Math.max(16, insets.bottom + 8) }]}>
         <Pressable
           onPress={handleSave}
           style={({ pressed }) => [

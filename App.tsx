@@ -37,8 +37,8 @@ function AppContent() {
     >
       <StatusBar style="light" />
       <View style={styles.container}>
-        {isAuthenticated && <Header />}
         <NavigationContainer theme={customDarkTheme}>
+          {isAuthenticated && <Header />}
           <RootStackNavigator />
         </NavigationContainer>
       </View>

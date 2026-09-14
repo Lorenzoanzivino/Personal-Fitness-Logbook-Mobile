@@ -2,6 +2,7 @@ import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RootTabParamList } from '../types/navigation';
 import { colors } from '../theme/colors';
 import { layout } from '../theme/spacing';
@@ -18,6 +19,10 @@ import {
 const Tab = createBottomTabNavigator<RootTabParamList>();
 
 export const BottomTabNavigator: React.FC = () => {
+  const insets = useSafeAreaInsets();
+  const dynamicHeight = layout.bottomBarHeight + insets.bottom;
+  const dynamicPaddingBottom = Math.max(8, insets.bottom + 4);
+
   return (
     <Tab.Navigator
       initialRouteName="Home"
@@ -25,7 +30,13 @@ export const BottomTabNavigator: React.FC = () => {
         headerShown: false,
         tabBarActiveTintColor: colors.accent,
         tabBarInactiveTintColor: colors.textMuted,
-        tabBarStyle: styles.tabBar,
+        tabBarStyle: [
+          styles.tabBar,
+          {
+            height: dynamicHeight,
+            paddingBottom: dynamicPaddingBottom,
+          },
+        ],
         tabBarItemStyle: styles.tabBarItem,
         tabBarLabelStyle: styles.tabBarLabel,
         tabBarIcon: ({ focused, color, size }) => {
@@ -92,8 +103,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     borderTopColor: colors.border,
     borderTopWidth: 1,
-    height: layout.bottomBarHeight,
-    paddingBottom: 8,
     paddingTop: 6,
     position: 'absolute',
     bottom: 0,

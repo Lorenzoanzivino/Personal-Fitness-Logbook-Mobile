@@ -8,6 +8,7 @@ import {
   Pressable,
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RootStackParamList, RootStackNavigationProp } from '../../types/navigation';
 import { useGym } from '../../context/GymContext';
 import {
@@ -53,6 +54,7 @@ interface LiveExerciseState {
 export const WorkoutModal: React.FC = () => {
   const navigation = useNavigation<RootStackNavigationProp>();
   const route = useRoute<WorkoutModalRouteProp>();
+  const insets = useSafeAreaInsets();
   const {
     routines,
     exercises,
@@ -332,16 +334,19 @@ export const WorkoutModal: React.FC = () => {
     setLiveExercises(updated);
   };
 
-  // Open Immersive Timer for a specific set
+  // Open Immersive Timer for a specific set (final inter-set rest)
   const handleOpenRestTimerForSet = (exIdx: number, setIdx: number) => {
     const targetSet = liveExercises[exIdx].sets[setIdx];
     const restSecs = targetSet.rest_seconds || liveExercises[exIdx].restSeconds || 90;
+    const isSpecial = targetSet.set_type === 'dropset' || targetSet.set_type === 'rest_pause';
 
     setTimerOverlay({
       visible: true,
       seconds: restSecs,
       exerciseName: liveExercises[exIdx].name,
-      setNumberText: `Serie ${targetSet.set_number}`,
+      setNumberText: isSpecial
+        ? `Recupero Finale • Serie ${targetSet.set_number}`
+        : `Serie ${targetSet.set_number}`,
       targetSetCallback: () => {
         // Auto-complete set on timer completion or skip!
         const updated = [...liveExercises];
@@ -349,6 +354,30 @@ export const WorkoutModal: React.FC = () => {
         setLiveExercises(updated);
         setTimerOverlay((prev) => ({ ...prev, visible: false }));
         showToast('success', `Serie ${targetSet.set_number} completata!`);
+      },
+    });
+  };
+
+  // Open Immersive Timer for an intra-set drop step (Stripping or Rest-Pause)
+  const handleOpenIntraRestTimer = (exIdx: number, setIdx: number, dropIdx: number) => {
+    const targetSet = liveExercises[exIdx].sets[setIdx];
+    const drop = targetSet.drops ? targetSet.drops[dropIdx] : null;
+    const isRestPause = targetSet.set_type === 'rest_pause';
+    const intraSecs = (drop && drop.rest_seconds !== undefined) ? drop.rest_seconds : (isRestPause ? 10 : 0);
+
+    if (intraSecs <= 0) {
+      showToast('info', 'Pausa intra-serie impostata a 0s (cambio carico immediato).');
+      return;
+    }
+
+    setTimerOverlay({
+      visible: true,
+      seconds: intraSecs,
+      exerciseName: `${liveExercises[exIdx].name} (Step ${dropIdx + 1} → ${dropIdx + 2})`,
+      setNumberText: `${isRestPause ? 'Pausa Rest-Pause' : 'Pausa Stripping'} • Serie ${targetSet.set_number}`,
+      targetSetCallback: () => {
+        setTimerOverlay((prev) => ({ ...prev, visible: false }));
+        showToast('success', `Pausa conclusa! Procedi con lo Step ${dropIdx + 2}`);
       },
     });
   };
@@ -1188,42 +1217,80 @@ export const WorkoutModal: React.FC = () => {
                           set.drops &&
                           set.drops.length > 0 && (
                             <View style={styles.liveDropsContainer}>
-                              <Text style={styles.liveDropsTitle}>
-                                {set.set_type === 'dropset' ? '⚡ DROP STRIPPING EFFETTIVI:' : '⏱ REST-PAUSE EFFETTIVI:'}
-                              </Text>
-                              {set.drops.map((drop, dIdx) => (
-                                <View key={drop.id || `drop-${dIdx}`} style={styles.liveDropStepRow}>
-                                  <Text style={styles.liveDropBadge}>Step {dIdx + 1}</Text>
-                                  <View style={styles.liveDropInputCol}>
-                                    <TextInput
-                                      style={[
-                                        styles.inputBox,
-                                        set.completed && styles.inputBoxCompleted,
-                                      ]}
-                                      keyboardType="decimal-pad"
-                                      value={drop.kg === 0 ? '' : String(drop.kg)}
-                                      onChangeText={(val) => handleUpdateDropKg(exIdx, setIdx, dIdx, val)}
-                                      placeholder="0"
-                                      placeholderTextColor={colors.textMuted}
-                                    />
-                                    <Text style={styles.inputSubLabel}>kg</Text>
+                              <View style={styles.liveDropsHeaderRow}>
+                                <Text style={styles.liveDropsTitle}>
+                                  {set.set_type === 'dropset' ? '⚡ DROP STRIPPING EFFETTIVI:' : '⏱ REST-PAUSE EFFETTIVI:'}
+                                </Text>
+                                <Text style={styles.liveDropsSubtitle}>
+                                  Rec. finale serie: {set.rest_seconds || 90}s
+                                </Text>
+                              </View>
+                              {set.drops.map((drop, dIdx) => {
+                                const isLastDrop = dIdx === (set.drops?.length || 0) - 1;
+                                const intraSecs =
+                                  drop.rest_seconds !== undefined
+                                    ? drop.rest_seconds
+                                    : set.set_type === 'rest_pause'
+                                    ? 10
+                                    : 0;
+
+                                return (
+                                  <View key={drop.id || `drop-${dIdx}`} style={styles.liveDropStepRow}>
+                                    <Text style={styles.liveDropBadge}>Step {dIdx + 1}</Text>
+                                    <View style={styles.liveDropInputCol}>
+                                      <TextInput
+                                        style={[
+                                          styles.inputBox,
+                                          set.completed && styles.inputBoxCompleted,
+                                        ]}
+                                        keyboardType="decimal-pad"
+                                        editable={!set.completed}
+                                        value={drop.kg === 0 ? '' : String(drop.kg)}
+                                        onChangeText={(val) => handleUpdateDropKg(exIdx, setIdx, dIdx, val)}
+                                        placeholder="0"
+                                        placeholderTextColor={colors.textMuted}
+                                      />
+                                      <Text style={styles.inputSubLabel}>kg</Text>
+                                    </View>
+                                    <View style={styles.liveDropInputCol}>
+                                      <TextInput
+                                        style={[
+                                          styles.inputBox,
+                                          set.completed && styles.inputBoxCompleted,
+                                        ]}
+                                        keyboardType="numeric"
+                                        editable={!set.completed}
+                                        value={drop.reps === 0 ? '' : String(drop.reps)}
+                                        onChangeText={(val) => handleUpdateDropReps(exIdx, setIdx, dIdx, val)}
+                                        placeholder="0"
+                                        placeholderTextColor={colors.textMuted}
+                                      />
+                                      <Text style={styles.inputSubLabel}>reps</Text>
+                                    </View>
+
+                                    {/* Intra-rest button between steps */}
+                                    {!isLastDrop ? (
+                                      <Pressable
+                                        onPress={() => handleOpenIntraRestTimer(exIdx, setIdx, dIdx)}
+                                        style={[
+                                          styles.liveIntraRestBtn,
+                                          intraSecs === 0 && styles.liveIntraRestBtnZero,
+                                        ]}
+                                        accessibilityRole="button"
+                                        accessibilityLabel={`Avvia pausa intra serie di ${intraSecs} secondi`}
+                                      >
+                                        <Text style={styles.liveIntraRestBtnText}>
+                                          ⏱ {intraSecs}s
+                                        </Text>
+                                      </Pressable>
+                                    ) : (
+                                      <View style={styles.liveLastDropBadge}>
+                                        <Text style={styles.liveLastDropBadgeText}>FINE STEP</Text>
+                                      </View>
+                                    )}
                                   </View>
-                                  <View style={styles.liveDropInputCol}>
-                                    <TextInput
-                                      style={[
-                                        styles.inputBox,
-                                        set.completed && styles.inputBoxCompleted,
-                                      ]}
-                                      keyboardType="numeric"
-                                      value={drop.reps === 0 ? '' : String(drop.reps)}
-                                      onChangeText={(val) => handleUpdateDropReps(exIdx, setIdx, dIdx, val)}
-                                      placeholder="0"
-                                      placeholderTextColor={colors.textMuted}
-                                    />
-                                    <Text style={styles.inputSubLabel}>reps</Text>
-                                  </View>
-                                </View>
-                              ))}
+                                );
+                              })}
                             </View>
                           )}
                       </View>
@@ -1274,7 +1341,7 @@ export const WorkoutModal: React.FC = () => {
       />
 
       {/* Footer Conclude Session */}
-      <View style={styles.footer}>
+      <View style={[styles.footer, { paddingBottom: Math.max(16, insets.bottom + 8) }]}>
         <Pressable
           onPress={() => setShowSaveConfirm(true)}
           style={({ pressed }) => [
@@ -1663,11 +1730,21 @@ const styles = StyleSheet.create({
     borderLeftWidth: 2,
     borderLeftColor: colors.danger,
   },
+  liveDropsHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
   liveDropsTitle: {
     fontSize: 9,
     fontWeight: '800',
     color: colors.danger,
-    marginBottom: 4,
+  },
+  liveDropsSubtitle: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: colors.textMuted,
   },
   liveDropStepRow: {
     flexDirection: 'row',
@@ -1683,6 +1760,40 @@ const styles = StyleSheet.create({
   },
   liveDropInputCol: {
     flex: 1,
+  },
+  liveIntraRestBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 4,
+    backgroundColor: 'rgba(14, 165, 233, 0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(14, 165, 233, 0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  liveIntraRestBtnZero: {
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+  },
+  liveIntraRestBtnText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: colors.accent,
+  },
+  liveLastDropBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+    borderRadius: 4,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  liveLastDropBadgeText: {
+    fontSize: 8,
+    fontWeight: '800',
+    color: colors.textSecondary,
   },
   notesCard: {
     padding: 14,
