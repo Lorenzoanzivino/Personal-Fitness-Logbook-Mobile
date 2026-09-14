@@ -190,7 +190,7 @@ Il backend esporrà i contratti REST già tipizzati in `src/types/`:
 
 | Metodo | Endpoint | Descrizione |
 |---|---|---|
-| `POST` | `/api/v1/auth/login` | Login Trainer (`admin123`) o Cliente (`OTP`) |
+| `POST` | `/api/v1/auth/login` | Login Trainer (`password123`) o Cliente (`OTP`) |
 | `POST` | `/api/v1/auth/provision` | Creazione cliente da parte del Trainer con generazione OTP |
 | `GET` | `/api/v1/auth/provisioned-clients` | Elenco clienti provisionati per il Trainer |
 | `POST` | `/api/v1/auth/otp/generate` | Generazione codice OTP d'invito (valido 30 min) |

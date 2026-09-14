@@ -554,13 +554,13 @@ export const ProfileScreen: React.FC = () => {
 
           <Text style={styles.roleExplanation}>
             {currentRole === 'TRAINER'
-              ? `Accesso Master confermato per @${user?.username || 'LorenzoAnzivino'}. Creazione schede autonome e in delega per gli atleti, registrazione clienti e gestione catalogo.`
+              ? `Accesso Master confermato per @${user?.username || 'trainer'}. Creazione schede autonome e in delega per gli atleti, registrazione clienti e gestione catalogo.`
               : `Accesso Atleta confermato per @${user?.username || 'Cliente'}. Schede sincronizzate e Live Logger protetto. I permessi di configurazione sono gestiti dal tuo Personal Trainer.`}
           </Text>
 
           <View style={styles.accountMetaRow}>
             <Text style={styles.accountMetaText}>
-              Account attivo: <Text style={{ fontWeight: '700', color: colors.text }}>@{user?.username || (currentRole === 'TRAINER' ? 'LorenzoAnzivino' : 'Cliente')}</Text>
+              Account attivo: <Text style={{ fontWeight: '700', color: colors.text }}>@{user?.username || (currentRole === 'TRAINER' ? 'trainer' : 'Cliente')}</Text>
             </Text>
             <View style={styles.statusPill}>
               <Text style={styles.statusPillText}>● Sessione Autenticata</Text>

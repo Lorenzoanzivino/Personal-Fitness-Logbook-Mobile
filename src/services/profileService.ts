@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { apiService } from './api';
+import { TRAINER_CONFIG } from './config';
 import {
   UserProfile,
   UserRole,
@@ -14,13 +15,13 @@ const DEFAULT_TRAINER_CLIENTS: ClientAssociation[] = [];
 
 const INITIAL_PROFILE: UserProfile = {
   id: 'trainer-1',
-  first_name: 'Lorenzo',
-  last_name: 'Anzivino',
+  first_name: TRAINER_CONFIG.firstName,
+  last_name: TRAINER_CONFIG.lastName,
   birth_date: '01-01-1995',
   height_cm: 180,
   avatar_url: null,
   role: 'TRAINER',
-  email: 'lorenzo@example.com',
+  email: TRAINER_CONFIG.email,
   clients: [],
   trainer_id: undefined,
   trainer_name: undefined,

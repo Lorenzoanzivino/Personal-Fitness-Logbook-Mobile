@@ -2,25 +2,27 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AuthUser, AuthSession, LoginCredentials, ProvisionedClient } from '../types/auth';
 import { ApiResponse } from '../types/api';
 
+import { TRAINER_CONFIG } from './config';
+
 const STORAGE_KEY_AUTH_SESSION = '@fitness_auth_session_v2';
 const STORAGE_KEY_PROVISIONED_CLIENTS = '@fitness_provisioned_clients_v2';
 
-// 1. CREDENZIALI HARDCODED TRAINER (ADMIN)
+// 1. CREDENZIALI MASTER TRAINER (lette in modo sicuro da .env tramite TRAINER_CONFIG)
 export const TRAINER_ADMIN = {
-  username: 'LorenzoAnzivino',
-  password: 'admin123',
+  username: TRAINER_CONFIG.username,
+  password: TRAINER_CONFIG.password,
   user: {
-    id: 'trainer-lorenzo-1',
-    username: 'LorenzoAnzivino',
-    first_name: 'Lorenzo',
-    last_name: 'Anzivino',
+    id: 'trainer-1',
+    username: TRAINER_CONFIG.username,
+    first_name: TRAINER_CONFIG.firstName,
+    last_name: TRAINER_CONFIG.lastName,
     role: 'TRAINER' as const,
-    email: 'lorenzo.anzivino@example.com',
-    height_cm: 182,
-    birth_date: '10-04-1992',
+    email: TRAINER_CONFIG.email,
+    height_cm: 180,
+    birth_date: '01-01-1995',
     avatar_url: null,
   },
-  token: 'mock-jwt-trainer-lorenzo-admin',
+  token: 'mock-jwt-trainer-token',
 };
 
 // 2. CLIENTI INIZIALI (partenza a zero)
@@ -90,11 +92,15 @@ class AuthService {
       };
     }
 
-    // A. Verifica Credenziali TRAINER (Lorenzo o LorenzoAnzivino / admin123)
+    // A. Verifica Credenziali TRAINER (Lorenzo o configurato via .env)
+    const configuredUsername = TRAINER_CONFIG.username.toLowerCase();
     const isTrainerMatch =
-      (cleanUsername.toLowerCase() === 'lorenzo' ||
-        cleanUsername.toLowerCase() === 'lorenzoanzivino') &&
-      cleanPasswordOrOtp === TRAINER_ADMIN.password;
+      (cleanUsername.toLowerCase() === configuredUsername ||
+        cleanUsername.toLowerCase() === 'lorenzo' ||
+        cleanUsername.toLowerCase() === 'lorenzoanzivino' ||
+        cleanUsername.toLowerCase() === 'trainer' ||
+        cleanUsername.toLowerCase() === 'admin') &&
+      cleanPasswordOrOtp === TRAINER_CONFIG.password;
 
     if (isTrainerMatch) {
       const session: AuthSession = {

@@ -103,10 +103,12 @@
 
 ### Autenticazione & Primo Accesso
 - **Accesso Trainer**:
-  - Username: `Lorenzo` oppure `LorenzoAnzivino`
-  - Password: `admin123`
+  - Le credenziali Master del Trainer sono protette e configurate privatamente nel file `.env` (ignorato da Git) tramite le variabili:
+    - `EXPO_PUBLIC_TRAINER_USERNAME`
+    - `EXPO_PUBLIC_TRAINER_PASSWORD`
+  - Per ambienti dimostrativi o di test, il file [.env.example](.env.example) mette a disposizione valori segnaposto standard (`trainer` / `password123`).
 - **Accesso Cliente / Allievo**:
-  - Username assegnato dall'istruttore.
+  - Username registrato dall'istruttore.
   - Codice OTP univoco a 6 cifre generato dal Trainer nella sezione Profilo.
 
 ### Gestione Schede e Sessioni Live
@@ -248,7 +250,7 @@ npx tsc --noEmit
 
 ## 📦 Compilazione Standalone (APK Android)
 
-Il progetto è preconfigurato con package nativo `com.lorenzoanzivino.gymlogbook` e profilo di build `preview` per compilare un file **.apk** installabile direttamente su qualsiasi smartphone Android senza passare dal Google Play Store.
+Il progetto è preconfigurato con package nativo `com.mytrainup.app` e profilo di build `preview` per compilare un file **.apk** installabile direttamente su qualsiasi smartphone Android senza passare dal Google Play Store.
 
 ### 1. Installazione di EAS CLI
 ```bash
