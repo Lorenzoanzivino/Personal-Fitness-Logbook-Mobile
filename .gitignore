@@ -39,3 +39,14 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Security
+.env
+
+# Personal and Media files
+*.pdf
+
+# AI Agents and IDE configs
+.claude/
+CLAUDE.md
+AGENTS.md
