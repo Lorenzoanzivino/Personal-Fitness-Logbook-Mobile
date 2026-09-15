@@ -8,6 +8,7 @@ import {
   Pressable,
   ActivityIndicator,
   Alert,
+  Platform,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { colors } from '../theme/colors';
@@ -187,32 +188,50 @@ export const ClientsScreen: React.FC = () => {
     });
   };
 
-  // Hard delete confirmation (Alert.alert native)
+  // Hard delete confirmation with cross-platform support
   const handleHardDeleteConfirm = (client: ProvisionedClient) => {
+    console.log('[ClientsScreen] Click Elimina su client:', client.id);
     const clientName = `${client.first_name} ${client.last_name}`.trim() || client.username;
+
+    const executeDelete = async () => {
+      try {
+        await hardDeleteClient(client.id);
+        if (selectedClient?.id === client.id) {
+          setSelectedClient(null);
+        }
+        await reloadGymData();
+        showToast(
+          'success',
+          `Cliente "${clientName}" e tutti i dati correlati eliminati definitivamente.`
+        );
+      } catch (err) {
+        console.error('[ClientsScreen] Errore durante hardDeleteClient:', err);
+        showToast('error', 'Errore durante l\'eliminazione definitiva del cliente.');
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      const confirmed =
+        typeof window !== 'undefined'
+          ? window.confirm(
+              'Azione irreversibile. Vuoi eliminare definitivamente questo cliente e tutti i suoi dati?'
+            )
+          : true;
+      if (confirmed) {
+        executeDelete();
+      }
+      return;
+    }
+
     Alert.alert(
-      'Elimina Definitivamente',
+      'Elimina definitivamente cliente',
       'Azione irreversibile. Verranno eliminati anche tutti i dati, schede e progressi associati a questo cliente.',
       [
         { text: 'Annulla', style: 'cancel' },
         {
           text: 'Elimina',
           style: 'destructive',
-          onPress: async () => {
-            try {
-              await hardDeleteClient(client.id);
-              if (selectedClient?.id === client.id) {
-                setSelectedClient(null);
-              }
-              await reloadGymData();
-              showToast(
-                'success',
-                `Cliente "${clientName}" e tutti i dati correlati eliminati definitivamente.`
-              );
-            } catch {
-              showToast('error', 'Errore durante l\'eliminazione definitiva del cliente.');
-            }
-          },
+          onPress: executeDelete,
         },
       ]
     );
@@ -444,7 +463,9 @@ export const ClientsScreen: React.FC = () => {
                     accessibilityRole="button"
                     accessibilityLabel={`Gestisci schede di ${clientName}`}
                   >
-                    <Text style={styles.manageRoutinesBtnText}>📋 GESTISCI SCHEDE</Text>
+                    <Text style={styles.manageRoutinesBtnText} numberOfLines={1}>
+                      📋 Schede
+                    </Text>
                   </Pressable>
 
                   <Pressable
@@ -453,7 +474,27 @@ export const ClientsScreen: React.FC = () => {
                     accessibilityRole="button"
                     accessibilityLabel={`Archivia atleta ${clientName}`}
                   >
-                    <Text style={styles.archiveBtnText}>📦 Archivia</Text>
+                    <Text style={styles.archiveBtnText} numberOfLines={1}>
+                      📦 Archivia
+                    </Text>
+                  </Pressable>
+
+                  <Pressable
+                    onPress={() => {
+                      console.log('[ClientsScreen] Click Elimina su client:', client.id);
+                      handleHardDeleteConfirm(client);
+                    }}
+                    style={({ pressed }) => [
+                      styles.activeDeleteBtn,
+                      { opacity: pressed ? 0.7 : 1 },
+                    ]}
+                    hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Elimina definitivamente ${clientName}`}
+                  >
+                    <Text style={styles.activeDeleteBtnText} numberOfLines={1}>
+                      🗑️ Elimina
+                    </Text>
                   </Pressable>
                 </View>
               </Card>
@@ -849,26 +890,29 @@ const styles = StyleSheet.create({
   },
   clientActionsRow: {
     flexDirection: 'row',
-    gap: 8,
+    alignItems: 'center',
+    gap: 6,
     marginTop: 12,
   },
   manageRoutinesBtn: {
-    flex: 1,
+    flex: 1.4,
     backgroundColor: colors.accent,
     borderRadius: layout.borderRadiusSm,
     paddingVertical: 9,
+    paddingHorizontal: 4,
     alignItems: 'center',
     justifyContent: 'center',
   },
   manageRoutinesBtnText: {
     color: '#0F172A',
     fontWeight: '900',
-    fontSize: 12,
-    letterSpacing: 0.3,
+    fontSize: 11,
+    letterSpacing: 0.2,
   },
   archiveBtn: {
-    paddingHorizontal: 14,
+    flex: 1,
     paddingVertical: 9,
+    paddingHorizontal: 4,
     borderRadius: layout.borderRadiusSm,
     backgroundColor: colors.backgroundSubtle,
     borderWidth: 1,
@@ -880,6 +924,22 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontSize: 11,
     fontWeight: '700',
+  },
+  activeDeleteBtn: {
+    flex: 1,
+    paddingVertical: 9,
+    paddingHorizontal: 4,
+    borderRadius: layout.borderRadiusSm,
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.4)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  activeDeleteBtnText: {
+    color: colors.danger,
+    fontSize: 11,
+    fontWeight: '800',
   },
   emptyCard: {
     alignItems: 'center',
