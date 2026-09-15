@@ -178,13 +178,11 @@ export const GymProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       return (
         !r.owner_id ||
         r.owner_id === 'trainer-1' ||
-        r.owner_id === 'trainer-marco-1' ||
         r.owner_id === userProfile.id
       );
     } else {
       return (
         r.owner_id === activeOwnerId ||
-        r.owner_id === 'client-simona-1' ||
         r.owner_id === userProfile.id
       );
     }
@@ -199,14 +197,12 @@ export const GymProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       return (
         !f.owner_id ||
         f.owner_id === 'trainer-1' ||
-        f.owner_id === 'trainer-marco-1' ||
         f.owner_id === userProfile.id
       );
     } else {
       return (
         !f.owner_id ||
         f.owner_id === activeOwnerId ||
-        f.owner_id === 'client-simona-1' ||
         f.owner_id === userProfile.id
       );
     }

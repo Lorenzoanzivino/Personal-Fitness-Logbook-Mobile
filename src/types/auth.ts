@@ -35,4 +35,5 @@ export interface ProvisionedClient {
   email?: string;
   notes?: string;
   created_at: string;
+  isArchived?: boolean;
 }

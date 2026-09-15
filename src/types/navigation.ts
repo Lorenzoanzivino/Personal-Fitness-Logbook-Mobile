@@ -5,6 +5,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 export type RootTabParamList = {
   Home: undefined;
   Gym: { initialSubTab?: 'routines' | 'history' | 'progression' | 'exercises' } | undefined;
+  Clients: undefined;
   Measurements: undefined;
   Diet: undefined;
   Profile: undefined;

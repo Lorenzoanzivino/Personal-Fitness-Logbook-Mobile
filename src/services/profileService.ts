@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { apiService } from './api';
+import { gymStorage } from './gymStorage';
 import { TRAINER_CONFIG } from './config';
 import {
   UserProfile,
@@ -194,9 +195,51 @@ export const profileService = {
   },
 
   /**
-   * Rimuove un cliente dalla lista del Trainer
+   * Rimuove un cliente dalla lista attiva del Trainer impostando isArchived: true (Soft Delete)
    */
   async removeClientFromTrainer(clientId: string): Promise<UserProfile> {
+    const existing = currentProfileState.clients || [];
+    currentProfileState = {
+      ...currentProfileState,
+      clients: existing.map((c) =>
+        c.id === clientId ? { ...c, isArchived: true } : c
+      ),
+      updated_at: new Date().toISOString(),
+    };
+    await persistProfileState(currentProfileState);
+    notifyListeners();
+    return { ...currentProfileState };
+  },
+
+  /**
+   * Archivia un cliente (Soft Delete)
+   */
+  async archiveClient(clientId: string): Promise<UserProfile> {
+    return this.removeClientFromTrainer(clientId);
+  },
+
+  /**
+   * Ripristina un cliente archiviato (Unarchive)
+   */
+  async unarchiveClient(clientId: string): Promise<UserProfile> {
+    const existing = currentProfileState.clients || [];
+    currentProfileState = {
+      ...currentProfileState,
+      clients: existing.map((c) =>
+        c.id === clientId ? { ...c, isArchived: false } : c
+      ),
+      updated_at: new Date().toISOString(),
+    };
+    await persistProfileState(currentProfileState);
+    notifyListeners();
+    return { ...currentProfileState };
+  },
+
+  /**
+   * Elimina definitivamente un cliente (Hard Delete a Cascata)
+   * Rimuove il cliente da Auth/Profilo, elimina schede, workout, cartelle, misurazioni e PDF associati.
+   */
+  async hardDeleteClient(clientId: string): Promise<UserProfile> {
     const existing = currentProfileState.clients || [];
     currentProfileState = {
       ...currentProfileState,
@@ -205,6 +248,28 @@ export const profileService = {
     };
     await persistProfileState(currentProfileState);
     notifyListeners();
+
+    // 1. Cascade delete su Gym storage (routines, workouts, folders del cliente)
+    await gymStorage.hardDeleteClientGymData(clientId);
+
+    // 2. Cascade delete su chiavi dedicate al client in AsyncStorage (misurazioni, PDF nutrizionali, etc.)
+    try {
+      const allKeys = await AsyncStorage.getAllKeys();
+      const clientKeys = allKeys.filter(
+        (k) =>
+          k.includes(clientId) ||
+          k.startsWith(`@measurements_${clientId}`) ||
+          k.startsWith(`@diet_${clientId}`) ||
+          k.startsWith(`@nutrition_pdf_${clientId}`) ||
+          k.startsWith(`@client_${clientId}`)
+      );
+      if (clientKeys.length > 0) {
+        await AsyncStorage.multiRemove(clientKeys);
+      }
+    } catch (err) {
+      console.warn('Errore rimozione chiavi correlate al cliente:', clientId, err);
+    }
+
     return { ...currentProfileState };
   },
 

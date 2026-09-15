@@ -6,11 +6,13 @@ import {
   StyleSheet,
   ScrollView,
   Pressable,
+  ActivityIndicator,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { RootTabParamList, TabNavigationProp } from '../types/navigation';
 import { useGym } from '../context/GymContext';
-import { RoutineFolder } from '../types/workout';
+import { RoutineFolder, WorkoutRoutine } from '../types/workout';
 import { colors } from '../theme/colors';
 import { layout } from '../theme/spacing';
 import { typography } from '../theme/typography';
@@ -18,6 +20,7 @@ import { Card } from '../components/Card';
 import { CustomConfirmModal } from '../components/CustomConfirmModal';
 import { ToastFeedback, ToastType } from '../components/ToastFeedback';
 import { ScreenBackgroundWrapper } from '../components/ScreenBackgroundWrapper';
+import { exportRoutineToPdf } from '../services/pdfService';
 
 type SubTab = 'routines' | 'history' | 'progression' | 'exercises';
 type GymScreenRouteProp = RouteProp<RootTabParamList, 'Gym'>;
@@ -68,10 +71,6 @@ export const GymScreen: React.FC = () => {
 
   const [activeTab, setActiveTab] = useState<SubTab>(
     route.params?.initialSubTab || 'routines'
-  );
-
-  const [trainerSection, setTrainerSection] = useState<'personal' | 'clients'>(
-    isDelegatedMode ? 'clients' : 'personal'
   );
 
   useEffect(() => {
@@ -140,6 +139,28 @@ export const GymScreen: React.FC = () => {
 
   const showToast = (type: ToastType, message: string) => {
     setToast({ visible: true, type, message });
+  };
+
+  // PDF Export loading state
+  const [exportingRoutineId, setExportingRoutineId] = useState<number | null>(null);
+
+  const handleExportPdf = async (routine: WorkoutRoutine) => {
+    if (exportingRoutineId) return;
+    try {
+      setExportingRoutineId(routine.id);
+      const athleteName =
+        selectedClient?.name ||
+        (userRole === 'CLIENT'
+          ? `${userProfile.first_name} ${userProfile.last_name}`.trim()
+          : undefined);
+      await exportRoutineToPdf(routine, athleteName);
+      showToast('success', `PDF generato per "${routine.name}"`);
+    } catch (err) {
+      console.error('Errore generazione PDF scheda:', err);
+      showToast('error', 'Impossibile generare il PDF della scheda.');
+    } finally {
+      setExportingRoutineId(null);
+    }
   };
 
   // Filtered exercises for Catalog tab
@@ -508,136 +529,38 @@ export const GymScreen: React.FC = () => {
 
   return (
     <ScreenBackgroundWrapper style={styles.container}>
-      {/* RBAC Header: Trainer Section Switcher OR Client Status Banner */}
+      {/* RBAC Header: Trainer Delegation Banner OR Client Status Banner */}
       {userRole === 'TRAINER' ? (
-        <View style={styles.trainerSectionWrapper}>
-          {/* Top Segmented Tabs */}
-          <View style={styles.trainerSegmentContainer}>
-            <Pressable
-              onPress={() => {
-                setTrainerSection('personal');
-                setSelectedClient(null);
-              }}
-              style={[
-                styles.trainerSegmentBtn,
-                trainerSection === 'personal' && styles.trainerSegmentBtnActive,
-              ]}
-              accessibilityRole="tab"
-              accessibilityLabel="I Miei Allenamenti Personali"
-            >
-              <Text
-                style={[
-                  styles.trainerSegmentText,
-                  trainerSection === 'personal' && styles.trainerSegmentTextActive,
-                ]}
-              >
-                🏋️ I Miei Allenamenti
+        selectedClient ? (
+          <View style={styles.delegationActiveBanner}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.delegationActiveTitle}>
+                📋 SCHEDE DI: {selectedClient.name.toUpperCase()}
               </Text>
-            </Pressable>
-
-            <Pressable
-              onPress={() => {
-                setTrainerSection('clients');
-                const firstClient = (userProfile.clients || [])[0] || null;
-                if (firstClient && !selectedClient) {
-                  setSelectedClient(firstClient);
-                }
-              }}
-              style={[
-                styles.trainerSegmentBtn,
-                trainerSection === 'clients' && styles.trainerSegmentBtnActive,
-              ]}
-              accessibilityRole="tab"
-              accessibilityLabel="Gestione Schede Clienti"
-            >
-              <Text
-                style={[
-                  styles.trainerSegmentText,
-                  trainerSection === 'clients' && styles.trainerSegmentTextActive,
-                ]}
-              >
-                👥 Gestione Schede Clienti
+              <Text style={styles.delegationActiveDesc}>
+                Stai gestendo le schede assegnate a questo allievo. Le modifiche saranno visibili nella sua app.
               </Text>
-            </Pressable>
-          </View>
-
-          {/* Sub-bar specific for Clients Management */}
-          {trainerSection === 'clients' && (
-            <View style={styles.clientsManagerSubbar}>
-              {(userProfile.clients || []).length === 0 ? (
-                <View style={styles.emptyClientsBanner}>
-                  <Text style={styles.emptyClientsIcon}>👥</Text>
-                  <Text style={styles.emptyClientsTitle}>Nessun cliente registrato</Text>
-                  <Text style={styles.emptyClientsDesc}>
-                    Non hai ancora allievi collegati. Vai nella sezione Profilo per generare un codice OTP e registrare il tuo primo atleta.
-                  </Text>
-                  <Pressable
-                    onPress={() => navigation.navigate('Profile')}
-                    style={styles.goToProfileBtn}
-                    accessibilityRole="button"
-                    accessibilityLabel="Vai al Profilo per generare codici OTP"
-                  >
-                    <Text style={styles.goToProfileBtnText}>➔ Vai a Gestione Allievi</Text>
-                  </Pressable>
-                </View>
-              ) : (
-                <>
-                  <View style={styles.clientPickerHeaderRow}>
-                    <Text style={styles.clientPickerCaption}>ALLIEVO SELEZIONATO:</Text>
-                    <Pressable
-                      onPress={() => navigation.navigate('Profile')}
-                      style={styles.addClientPill}
-                      accessibilityRole="button"
-                      accessibilityLabel="Aggiungi nuovo allievo dal profilo"
-                    >
-                      <Text style={styles.addClientPillText}>+ Nuovo Allievo</Text>
-                    </Pressable>
-                  </View>
-
-                  <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={styles.delegationChipsContainer}
-                  >
-                    {(userProfile.clients || []).map((client) => {
-                      const isSelected = selectedClient?.id === client.id;
-                      return (
-                        <Pressable
-                          key={client.id}
-                          onPress={() => setSelectedClient(client)}
-                          style={[
-                            styles.delegationChip,
-                            isSelected && styles.delegationChipActiveClient,
-                          ]}
-                        >
-                          <Text
-                            style={[
-                              styles.delegationChipText,
-                              isSelected && styles.delegationChipTextActiveClient,
-                            ]}
-                          >
-                            👤 {client.name}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                  </ScrollView>
-
-                  {selectedClient && (
-                    <View style={styles.delegationActiveBanner}>
-                      <Text style={styles.delegationActiveTitle}>
-                        📋 SCHEDE ATTIVE DI: {selectedClient.name.toUpperCase()}
-                      </Text>
-                      <Text style={styles.delegationActiveDesc}>
-                        Le schede create o modificate qui sotto sono assegnate direttamente a questo atleta e visibili nella sua app.
-                      </Text>
-                    </View>
-                  )}
-                </>
-              )}
             </View>
-          )}
-        </View>
+            <View style={styles.delegationActionsRow}>
+              <Pressable
+                onPress={() => setSelectedClient(null)}
+                style={styles.clearDelegationBtn}
+                accessibilityRole="button"
+                accessibilityLabel="Torna alle mie schede personali"
+              >
+                <Text style={styles.clearDelegationBtnText}>✕ Torna a Mie Schede</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => navigation.navigate('Clients')}
+                style={styles.goToClientsTabBtn}
+                accessibilityRole="button"
+                accessibilityLabel="Gestisci allievi nella tab Clienti"
+              >
+                <Text style={styles.goToClientsTabBtnText}>👥 Tab Clienti</Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : null
       ) : (
         <View style={styles.clientModeBanner}>
           <View style={styles.clientModeHeader}>
@@ -1062,14 +985,37 @@ export const GymScreen: React.FC = () => {
                                 weekNumber: 1,
                               })
                             }
-                            style={[
-                              styles.launchButton,
-                              userRole === 'CLIENT' && { flex: 1 },
-                            ]}
+                            style={styles.launchButton}
                             accessibilityRole="button"
                             accessibilityLabel="Avvia live logger per questa scheda"
                           >
                             <Text style={styles.launchButtonText}>▶ AVVIA LIVE LOGGER</Text>
+                          </Pressable>
+
+                          {/* Export PDF Button */}
+                          <Pressable
+                            onPress={() => handleExportPdf(routine)}
+                            disabled={exportingRoutineId === routine.id}
+                            style={[
+                              styles.exportPdfBtn,
+                              exportingRoutineId === routine.id && { opacity: 0.6 },
+                            ]}
+                            accessibilityRole="button"
+                            accessibilityLabel="Esporta scheda in PDF"
+                          >
+                            {exportingRoutineId === routine.id ? (
+                              <ActivityIndicator size="small" color={colors.accent} />
+                            ) : (
+                              <>
+                                <Ionicons
+                                  name="print-outline"
+                                  size={15}
+                                  color={colors.accent}
+                                  style={{ marginRight: 4 }}
+                                />
+                                <Text style={styles.exportPdfBtnText}>PDF</Text>
+                              </>
+                            )}
                           </Pressable>
 
                           {userRole !== 'CLIENT' && (
@@ -1868,6 +1814,23 @@ const styles = StyleSheet.create({
   },
   launchButtonText: {
     color: '#0F172A',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  exportPdfBtn: {
+    height: layout.minTouchTarget,
+    paddingHorizontal: 10,
+    backgroundColor: colors.backgroundSubtle,
+    borderRadius: layout.borderRadiusMd,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    marginRight: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(14, 165, 233, 0.4)',
+  },
+  exportPdfBtnText: {
+    color: colors.accent,
     fontSize: 12,
     fontWeight: '800',
   },
@@ -2713,104 +2676,35 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     lineHeight: 16,
   },
-  trainerSectionWrapper: {
-    backgroundColor: 'rgba(17, 24, 39, 0.95)',
-    borderBottomWidth: 1,
-    borderBottomColor: colors.borderLight,
-  },
-  trainerSegmentContainer: {
+  delegationActionsRow: {
     flexDirection: 'row',
-    padding: 8,
     gap: 8,
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    marginTop: 8,
   },
-  trainerSegmentBtn: {
-    flex: 1,
-    paddingVertical: 10,
-    paddingHorizontal: 8,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: 'transparent',
-  },
-  trainerSegmentBtnActive: {
-    backgroundColor: colors.surface,
-    borderColor: colors.accent,
-  },
-  trainerSegmentText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: colors.textSecondary,
-  },
-  trainerSegmentTextActive: {
-    color: colors.accent,
-    fontWeight: '800',
-  },
-  clientsManagerSubbar: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    backgroundColor: 'rgba(236, 72, 153, 0.04)',
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(236, 72, 153, 0.2)',
-  },
-  emptyClientsBanner: {
-    alignItems: 'center',
-    paddingVertical: 16,
+  clearDelegationBtn: {
     paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
   },
-  emptyClientsIcon: {
-    fontSize: 32,
-    marginBottom: 6,
-  },
-  emptyClientsTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: colors.text,
-    marginBottom: 4,
-  },
-  emptyClientsDesc: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    lineHeight: 18,
-    marginBottom: 12,
-  },
-  goToProfileBtn: {
-    backgroundColor: colors.accent,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 8,
-  },
-  goToProfileBtnText: {
-    color: '#000',
-    fontWeight: '700',
-    fontSize: 12,
-  },
-  clientPickerHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  clientPickerCaption: {
+  clearDelegationBtnText: {
     fontSize: 11,
-    fontWeight: '800',
-    color: '#EC4899',
-    letterSpacing: 0.5,
+    fontWeight: '700',
+    color: colors.textSecondary,
   },
-  addClientPill: {
-    backgroundColor: 'rgba(236, 72, 153, 0.15)',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
+  goToClientsTabBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+    backgroundColor: 'rgba(236, 72, 153, 0.2)',
     borderWidth: 1,
     borderColor: '#EC4899',
   },
-  addClientPillText: {
+  goToClientsTabBtnText: {
     fontSize: 11,
-    fontWeight: '700',
+    fontWeight: '800',
     color: '#EC4899',
   },
 });

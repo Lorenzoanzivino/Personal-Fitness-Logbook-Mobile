@@ -18,6 +18,9 @@ interface AuthContextType {
     fullName?: string,
     notes?: string
   ) => Promise<{ success: boolean; otp?: string; error?: string }>;
+  archiveClient: (clientId: string) => Promise<void>;
+  unarchiveClient: (clientId: string) => Promise<void>;
+  hardDeleteClient: (clientId: string) => Promise<void>;
   refreshProvisionedClients: () => Promise<void>;
 }
 
@@ -141,6 +144,30 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
   };
 
+  const archiveClient = async (clientId: string): Promise<void> => {
+    await Promise.all([
+      authService.archiveClient(clientId),
+      profileService.archiveClient(clientId),
+    ]);
+    await refreshProvisionedClients();
+  };
+
+  const unarchiveClient = async (clientId: string): Promise<void> => {
+    await Promise.all([
+      authService.unarchiveClient(clientId),
+      profileService.unarchiveClient(clientId),
+    ]);
+    await refreshProvisionedClients();
+  };
+
+  const hardDeleteClient = async (clientId: string): Promise<void> => {
+    await Promise.all([
+      authService.hardDeleteClient(clientId),
+      profileService.hardDeleteClient(clientId),
+    ]);
+    await refreshProvisionedClients();
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -153,6 +180,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         login,
         logout,
         createClientAccount,
+        archiveClient,
+        unarchiveClient,
+        hardDeleteClient,
         refreshProvisionedClients,
       }}
     >

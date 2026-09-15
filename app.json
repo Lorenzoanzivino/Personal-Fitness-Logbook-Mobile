@@ -5,7 +5,7 @@
     "displayName": "MY TRAIN UP",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/logo1.png",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true
@@ -14,14 +14,14 @@
       "package": "com.mytrainup.app",
       "usesCleartextTraffic": true,
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundColor": "#0F172A",
+        "foregroundImage": "./assets/logo1.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       }
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/logo1.png"
     },
     "extra": {
       "eas": {
@@ -29,7 +29,8 @@
       }
     },
     "plugins": [
-      "expo-audio"
+      "expo-audio",
+      "expo-sharing"
     ]
   }
 }

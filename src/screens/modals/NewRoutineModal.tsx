@@ -6,6 +6,7 @@ import {
   StyleSheet,
   ScrollView,
   Pressable,
+  ActivityIndicator,
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -20,6 +21,7 @@ import { CustomConfirmModal } from '../../components/CustomConfirmModal';
 import { ToastFeedback, ToastType } from '../../components/ToastFeedback';
 import { YouTubeModalOverlay } from '../../components/YouTubeModalOverlay';
 import { BandSelectDropdown } from '../../components/BandSelectDropdown';
+import { exportRoutineToPdf } from '../../services/pdfService';
 
 type NewRoutineModalRouteProp = RouteProp<RootStackParamList, 'NewRoutineModal'>;
 
@@ -98,6 +100,30 @@ export const NewRoutineModal: React.FC = () => {
   const routineId = route.params?.routineId;
   const isEditing = Boolean(routineId);
   const existingRoutine = isEditing ? routines.find((r) => r.id === routineId) : null;
+
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
+
+  const handleExportPdf = async () => {
+    if (!existingRoutine || isExportingPdf) return;
+    try {
+      setIsExportingPdf(true);
+      await exportRoutineToPdf(existingRoutine, selectedClient?.name);
+      setToast({
+        visible: true,
+        type: 'success',
+        message: `PDF esportato per "${existingRoutine.name}"`,
+      });
+    } catch (err) {
+      console.error('Errore export PDF in modal:', err);
+      setToast({
+        visible: true,
+        type: 'error',
+        message: 'Impossibile esportare il PDF.',
+      });
+    } finally {
+      setIsExportingPdf(false);
+    }
+  };
 
   const [name, setName] = useState('');
   const [durationWeeks, setDurationWeeks] = useState('8');
@@ -594,14 +620,32 @@ export const NewRoutineModal: React.FC = () => {
         </View>
 
         {isEditing && (
-          <Pressable
-            onPress={() => setShowDeleteConfirm(true)}
-            style={styles.headerDeleteBtn}
-            accessibilityRole="button"
-            accessibilityLabel="Elimina scheda"
-          >
-            <Text style={styles.headerDeleteText}>🗑 Elimina</Text>
-          </Pressable>
+          <>
+            {existingRoutine && (
+              <Pressable
+                onPress={handleExportPdf}
+                disabled={isExportingPdf}
+                style={styles.headerExportBtn}
+                accessibilityRole="button"
+                accessibilityLabel="Esporta scheda in PDF"
+              >
+                {isExportingPdf ? (
+                  <ActivityIndicator size="small" color={colors.accent} />
+                ) : (
+                  <Text style={styles.headerExportText}>📄 PDF</Text>
+                )}
+              </Pressable>
+            )}
+
+            <Pressable
+              onPress={() => setShowDeleteConfirm(true)}
+              style={styles.headerDeleteBtn}
+              accessibilityRole="button"
+              accessibilityLabel="Elimina scheda"
+            >
+              <Text style={styles.headerDeleteText}>🗑 Elimina</Text>
+            </Pressable>
+          </>
         )}
 
         <Pressable
@@ -966,50 +1010,50 @@ export const NewRoutineModal: React.FC = () => {
                               </View>
 
                               {/* Inputs based on Exercise Type & Set Type */}
-                              {s.setType !== 'dropset' && s.setType !== 'rest_pause' && (
-                                <>
-                                  {exType === 'reps' && (
-                                    <View style={styles.inputsRow}>
-                                      <View style={styles.inputMiniCol}>
-                                        <Text style={styles.miniLabel}>TARGET KG</Text>
-                                        <TextInput
-                                          style={styles.setInp}
-                                          keyboardType="decimal-pad"
-                                          value={s.targetWeightKg === 0 ? '' : String(s.targetWeightKg)}
-                                          onChangeText={(val) => {
-                                            const num = parseFloat(val.replace(',', '.'));
-                                            const up = [...routineExercises];
-                                            up[exIdx].sets[sIdx].targetWeightKg = isNaN(num) ? 0 : num;
-                                            setRoutineExercises(up);
-                                          }}
-                                          placeholder="0"
-                                          placeholderTextColor={colors.textMuted}
-                                        />
-                                      </View>
+                              <View style={styles.inputsRow}>
+                                {s.setType !== 'dropset' && s.setType !== 'rest_pause' ? (
+                                  <>
+                                    {exType === 'reps' && (
+                                      <>
+                                        <View style={[styles.inputMiniCol, { flex: 1 }]}>
+                                          <Text style={styles.miniLabel} numberOfLines={1}>TARGET KG</Text>
+                                          <TextInput
+                                            style={styles.setInp}
+                                            keyboardType="decimal-pad"
+                                            value={s.targetWeightKg === 0 ? '' : String(s.targetWeightKg)}
+                                            onChangeText={(val) => {
+                                              const num = parseFloat(val.replace(',', '.'));
+                                              const up = [...routineExercises];
+                                              up[exIdx].sets[sIdx].targetWeightKg = isNaN(num) ? 0 : num;
+                                              setRoutineExercises(up);
+                                            }}
+                                            placeholder="0"
+                                            placeholderTextColor={colors.textMuted}
+                                          />
+                                        </View>
 
-                                      <View style={styles.inputMiniCol}>
-                                        <Text style={styles.miniLabel}>REPS</Text>
-                                        <TextInput
-                                          style={styles.setInp}
-                                          keyboardType="numeric"
-                                          value={s.targetReps === 0 ? '' : String(s.targetReps)}
-                                          onChangeText={(val) => {
-                                            const num = parseInt(val, 10);
-                                            const up = [...routineExercises];
-                                            up[exIdx].sets[sIdx].targetReps = isNaN(num) ? 0 : num;
-                                            setRoutineExercises(up);
-                                          }}
-                                          placeholder="10"
-                                          placeholderTextColor={colors.textMuted}
-                                        />
-                                      </View>
-                                    </View>
-                                  )}
+                                        <View style={[styles.inputMiniCol, { flex: 1 }]}>
+                                          <Text style={styles.miniLabel} numberOfLines={1}>REPS</Text>
+                                          <TextInput
+                                            style={styles.setInp}
+                                            keyboardType="numeric"
+                                            value={s.targetReps === 0 ? '' : String(s.targetReps)}
+                                            onChangeText={(val) => {
+                                              const num = parseInt(val, 10);
+                                              const up = [...routineExercises];
+                                              up[exIdx].sets[sIdx].targetReps = isNaN(num) ? 0 : num;
+                                              setRoutineExercises(up);
+                                            }}
+                                            placeholder="10"
+                                            placeholderTextColor={colors.textMuted}
+                                          />
+                                        </View>
+                                      </>
+                                    )}
 
-                                  {exType === 'time' && (
-                                    <View style={styles.inputsRow}>
+                                    {exType === 'time' && (
                                       <View style={[styles.inputMiniCol, { flex: 2 }]}>
-                                        <Text style={styles.miniLabel}>DURATA TARGET (SECONDI)</Text>
+                                        <Text style={styles.miniLabel} numberOfLines={1}>DURATA TARGET</Text>
                                         <TextInput
                                           style={[styles.setInp, { color: colors.emerald }]}
                                           keyboardType="numeric"
@@ -1024,89 +1068,105 @@ export const NewRoutineModal: React.FC = () => {
                                           placeholderTextColor={colors.textMuted}
                                         />
                                       </View>
-                                    </View>
-                                  )}
+                                    )}
 
-                                  {exType === 'bodyweight' && (
-                                    <View style={styles.inputsRow}>
-                                      <View style={[styles.inputMiniCol, { flex: 1, minWidth: 150, marginRight: 6 }]}>
-                                        <Text style={styles.miniLabel}>TIPO / ELASTICO</Text>
-                                        <BandSelectDropdown
-                                          compact
-                                          value={s.bandAssistance || 'none'}
-                                          onChange={(val) => {
-                                            const up = [...routineExercises];
-                                            up[exIdx].sets[sIdx].bandAssistance = val;
-                                            setRoutineExercises(up);
-                                          }}
-                                        />
-                                      </View>
-
-                                      {s.bandAssistance === 'weighted' && (
-                                        <View style={[styles.inputMiniCol, { width: 72, marginRight: 6 }]}>
-                                          <Text style={styles.miniLabel}>ZAVORRA (+KG)</Text>
-                                          <TextInput
-                                            style={styles.setInp}
-                                            keyboardType="decimal-pad"
-                                            value={s.targetWeightKg === 0 ? '' : String(s.targetWeightKg)}
-                                            onChangeText={(val) => {
-                                              const num = parseFloat(val.replace(',', '.'));
+                                    {exType === 'bodyweight' && (
+                                      <>
+                                        <View style={[styles.inputMiniCol, { flex: 2 }]}>
+                                          <Text style={styles.miniLabel} numberOfLines={1}>TIPO / ELASTICO</Text>
+                                          <BandSelectDropdown
+                                            compact
+                                            style={styles.bandDropdown}
+                                            value={s.bandAssistance || 'none'}
+                                            onChange={(val) => {
                                               const up = [...routineExercises];
-                                              up[exIdx].sets[sIdx].targetWeightKg = isNaN(num) ? 0 : num;
+                                              up[exIdx].sets[sIdx].bandAssistance = val;
                                               setRoutineExercises(up);
                                             }}
-                                            placeholder="+0"
+                                          />
+                                        </View>
+
+                                        {s.bandAssistance === 'weighted' && (
+                                          <View style={[styles.inputMiniCol, { flex: 1.2 }]}>
+                                            <Text style={styles.miniLabel} numberOfLines={1}>ZAVORRA (+KG)</Text>
+                                            <TextInput
+                                              style={styles.setInp}
+                                              keyboardType="decimal-pad"
+                                              value={s.targetWeightKg === 0 ? '' : String(s.targetWeightKg)}
+                                              onChangeText={(val) => {
+                                                const num = parseFloat(val.replace(',', '.'));
+                                                const up = [...routineExercises];
+                                                up[exIdx].sets[sIdx].targetWeightKg = isNaN(num) ? 0 : num;
+                                                setRoutineExercises(up);
+                                              }}
+                                              placeholder="+0"
+                                              placeholderTextColor={colors.textMuted}
+                                            />
+                                          </View>
+                                        )}
+
+                                        <View style={[styles.inputMiniCol, { flex: 1 }]}>
+                                          <Text style={styles.miniLabel} numberOfLines={1}>REPS</Text>
+                                          <TextInput
+                                            style={styles.setInp}
+                                            keyboardType="numeric"
+                                            value={s.targetReps === 0 ? '' : String(s.targetReps)}
+                                            onChangeText={(val) => {
+                                              const num = parseInt(val, 10);
+                                              const up = [...routineExercises];
+                                              up[exIdx].sets[sIdx].targetReps = isNaN(num) ? 0 : num;
+                                              setRoutineExercises(up);
+                                            }}
+                                            placeholder="8"
                                             placeholderTextColor={colors.textMuted}
                                           />
                                         </View>
-                                      )}
+                                      </>
+                                    )}
 
-                                      <View style={[styles.inputMiniCol, { width: 60 }]}>
-                                        <Text style={styles.miniLabel}>REPS</Text>
-                                        <TextInput
-                                          style={styles.setInp}
-                                          keyboardType="numeric"
-                                          value={s.targetReps === 0 ? '' : String(s.targetReps)}
-                                          onChangeText={(val) => {
-                                            const num = parseInt(val, 10);
-                                            const up = [...routineExercises];
-                                            up[exIdx].sets[sIdx].targetReps = isNaN(num) ? 0 : num;
-                                            setRoutineExercises(up);
-                                          }}
-                                          placeholder="8"
-                                          placeholderTextColor={colors.textMuted}
-                                        />
-                                      </View>
+                                    <View style={[styles.inputMiniCol, { flex: 1.2 }]}>
+                                      <Text style={styles.miniLabel} numberOfLines={1}>RECUPERO</Text>
+                                      <TextInput
+                                        style={styles.setInp}
+                                        keyboardType="numeric"
+                                        value={String(s.restSeconds)}
+                                        onChangeText={(val) => {
+                                          const num = parseInt(val, 10);
+                                          const up = [...routineExercises];
+                                          up[exIdx].sets[sIdx].restSeconds = isNaN(num) ? 90 : num;
+                                          setRoutineExercises(up);
+                                        }}
+                                        placeholder="90s"
+                                        placeholderTextColor={colors.textMuted}
+                                      />
                                     </View>
-                                  )}
-                                </>
-                              )}
+                                  </>
+                                ) : (
+                                  <View style={[styles.inputMiniCol, { flex: 1, maxWidth: 90 }]}>
+                                    <Text style={styles.miniLabel} numberOfLines={1}>REC. FINALE</Text>
+                                    <TextInput
+                                      style={styles.setInp}
+                                      keyboardType="numeric"
+                                      value={String(s.restSeconds)}
+                                      onChangeText={(val) => {
+                                        const num = parseInt(val, 10);
+                                        const up = [...routineExercises];
+                                        up[exIdx].sets[sIdx].restSeconds = isNaN(num) ? 90 : num;
+                                        setRoutineExercises(up);
+                                      }}
+                                      placeholder="90s"
+                                      placeholderTextColor={colors.textMuted}
+                                    />
+                                  </View>
+                                )}
+                              </View>
 
-                          <View style={[styles.inputMiniCol, { width: (s.setType === 'dropset' || s.setType === 'rest_pause') ? 72 : 54 }]}>
-                            <Text style={styles.miniLabel}>
-                              {s.setType === 'dropset' || s.setType === 'rest_pause' ? 'REC. FINALE' : 'RECUPERO'}
-                            </Text>
-                            <TextInput
-                              style={styles.setInp}
-                              keyboardType="numeric"
-                              value={String(s.restSeconds)}
-                              onChangeText={(val) => {
-                                const num = parseInt(val, 10);
-                                const up = [...routineExercises];
-                                up[exIdx].sets[sIdx].restSeconds = isNaN(num) ? 90 : num;
-                                setRoutineExercises(up);
-                              }}
-                              placeholder="90s"
-                              placeholderTextColor={colors.textMuted}
-                            />
-                          </View>
-
-                          <Pressable
-                            onPress={() => handleRemoveSet(exIdx, sIdx)}
-                            style={styles.setDelBtn}
-                          >
-                            <Text style={styles.setDelText}>×</Text>
-                          </Pressable>
+                              <Pressable
+                                onPress={() => handleRemoveSet(exIdx, sIdx)}
+                                style={styles.setDelBtn}
+                              >
+                                <Text style={styles.setDelText}>×</Text>
+                              </Pressable>
                         </View>
 
                         {/* Dynamic Drops Rows for Stripping & Rest-Pause */}
@@ -1482,6 +1542,22 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
+  headerExportBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: layout.borderRadiusSm,
+    backgroundColor: 'rgba(14, 165, 233, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(14, 165, 233, 0.4)',
+    marginRight: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerExportText: {
+    color: colors.accent,
+    fontSize: 12,
+    fontWeight: '800',
+  },
   headerDeleteBtn: {
     paddingHorizontal: 10,
     paddingVertical: 6,
@@ -1718,54 +1794,67 @@ const styles = StyleSheet.create({
   setRowTop: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 8,
   },
   setNumCol: {
-    width: 28,
+    width: 24,
     fontSize: 12,
     fontWeight: '700',
     color: colors.textSecondary,
+    textAlign: 'center',
   },
   setTypePill: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
     borderRadius: layout.borderRadiusSm,
-    marginRight: 8,
   },
   setTypePillText: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '800',
   },
   inputsRow: {
     flex: 1,
     flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
   },
   inputMiniCol: {
     flex: 1,
+    justifyContent: 'center',
   },
   miniLabel: {
     fontSize: 8,
     fontWeight: '800',
     color: colors.textMuted,
-    marginBottom: 2,
+    marginBottom: 3,
     letterSpacing: 0.5,
+    height: 12,
+    lineHeight: 12,
+    textAlign: 'center',
   },
   setInp: {
+    height: 36,
     backgroundColor: colors.backgroundSubtle,
     borderRadius: 4,
-    paddingHorizontal: 6,
-    paddingVertical: 4,
+    paddingHorizontal: 4,
+    paddingVertical: 0,
     color: colors.text,
     fontSize: 13,
     fontWeight: '700',
     textAlign: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(51, 65, 85, 0.4)',
+  },
+  bandDropdown: {
+    height: 36,
+    borderRadius: 4,
+    paddingHorizontal: 6,
   },
   setDelBtn: {
-    width: 26,
-    height: 26,
+    width: 24,
+    height: 36,
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: 6,
   },
   setDelText: {
     color: colors.textMuted,

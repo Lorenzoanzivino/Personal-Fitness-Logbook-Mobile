@@ -1,8 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AuthUser, AuthSession, LoginCredentials, ProvisionedClient } from '../types/auth';
 import { ApiResponse } from '../types/api';
-
 import { TRAINER_CONFIG } from './config';
+import { generateUUID } from '../utils/uuid';
 
 const STORAGE_KEY_AUTH_SESSION = '@fitness_auth_session_v2';
 const STORAGE_KEY_PROVISIONED_CLIENTS = '@fitness_provisioned_clients_v2';
@@ -115,6 +115,7 @@ class AuthService {
     const provisionedList = await this.getProvisionedClients();
     const matchedClient = provisionedList.find(
       (c) =>
+        !c.isArchived &&
         c.username.toLowerCase() === cleanUsername.toLowerCase() &&
         c.otp.toUpperCase() === cleanPasswordOrOtp.toUpperCase()
     );
@@ -136,7 +137,7 @@ class AuthService {
 
       const session: AuthSession = {
         user: clientUser,
-        token: `mock-jwt-client-${matchedClient.username.toLowerCase()}`,
+        token: `mock-jwt-client-${matchedClient.id}`,
       };
       await this.saveSession(session);
       return { success: true, data: session, error: null };
@@ -155,6 +156,7 @@ class AuthService {
 
   /**
    * Crea un nuovo account cliente da parte del Trainer e genera il codice OTP (Password)
+   * Supporta infiniti clienti con lo stesso nome grazie agli identificatori univoci UUID.
    */
   async provisionClientAccount(
     username: string,
@@ -171,27 +173,14 @@ class AuthService {
     }
 
     const currentClients = await this.getProvisionedClients();
-    const existing = currentClients.find(
-      (c) => c.username.toLowerCase() === cleanUsername.toLowerCase()
-    );
-    if (existing) {
-      return {
-        success: false,
-        data: null,
-        error: {
-          code: 'USERNAME_EXISTS',
-          message: `Esiste già un cliente con username "${cleanUsername}". Scegli un username differente.`,
-        },
-      };
-    }
-
     const generatedOtp = this.generateOtp();
+    const clientId = generateUUID();
     const nameParts = (fullName || cleanUsername).trim().split(' ');
     const firstName = nameParts[0] || cleanUsername;
-    const lastName = nameParts.slice(1).join(' ') || 'Cliente';
+    const lastName = nameParts.slice(1).join(' ') || '';
 
     const newClient: ProvisionedClient = {
-      id: `client-${cleanUsername.toLowerCase()}-${Date.now()}`,
+      id: clientId,
       username: cleanUsername,
       first_name: firstName,
       last_name: lastName,
@@ -201,6 +190,7 @@ class AuthService {
       email: `${cleanUsername.toLowerCase()}@fitnesslogbook.local`,
       notes: notes?.trim() || 'Account cliente creato dal Trainer',
       created_at: new Date().toISOString(),
+      isArchived: false,
     };
 
     const updatedList = [newClient, ...currentClients];
@@ -214,6 +204,45 @@ class AuthService {
       },
       error: null,
     };
+  }
+
+  /**
+   * Archivia un cliente (Soft Delete)
+   */
+  async archiveClient(clientId: string): Promise<ProvisionedClient[]> {
+    const clients = await this.getProvisionedClients();
+    const updated = clients.map((c) =>
+      c.id === clientId ? { ...c, isArchived: true } : c
+    );
+    await this.saveProvisionedClients(updated);
+    return updated;
+  }
+
+  /**
+   * Ripristina un cliente archiviato (Unarchive)
+   */
+  async unarchiveClient(clientId: string): Promise<ProvisionedClient[]> {
+    const clients = await this.getProvisionedClients();
+    const updated = clients.map((c) =>
+      c.id === clientId ? { ...c, isArchived: false } : c
+    );
+    await this.saveProvisionedClients(updated);
+    return updated;
+  }
+
+  /**
+   * Elimina definitivamente un cliente (Hard Delete a Cascata)
+   */
+  async hardDeleteClient(clientId: string): Promise<void> {
+    const clients = await this.getProvisionedClients();
+    const updated = clients.filter((c) => c.id !== clientId);
+    await this.saveProvisionedClients(updated);
+
+    // Se la sessione attiva appartiene al cliente eliminato, effettua il logout
+    const session = await this.getStoredSession();
+    if (session && String(session.user.id) === String(clientId)) {
+      await this.clearSession();
+    }
   }
 
   /**

@@ -7,9 +7,11 @@ import { RootTabParamList } from '../types/navigation';
 import { colors } from '../theme/colors';
 import { layout } from '../theme/spacing';
 
+import { useAuth } from '../context/AuthContext';
 import {
   HomeScreen,
   GymScreen,
+  ClientsScreen,
   MeasurementsScreen,
   DietScreen,
   ProfileScreen,
@@ -20,6 +22,8 @@ const Tab = createBottomTabNavigator<RootTabParamList>();
 
 export const BottomTabNavigator: React.FC = () => {
   const insets = useSafeAreaInsets();
+  const { user, role } = useAuth();
+  const isTrainer = (user?.role || role) === 'TRAINER';
   const baseHeight = 62;
   const dynamicHeight = baseHeight + insets.bottom;
   const dynamicPaddingBottom = insets.bottom > 0 ? insets.bottom + 5 : 6;
@@ -47,6 +51,8 @@ export const BottomTabNavigator: React.FC = () => {
             iconName = focused ? 'home' : 'home-outline';
           } else if (route.name === 'Gym') {
             iconName = focused ? 'barbell' : 'barbell-outline';
+          } else if (route.name === 'Clients') {
+            iconName = focused ? 'people' : 'people-outline';
           } else if (route.name === 'Measurements') {
             iconName = focused ? 'fitness' : 'fitness-outline';
           } else if (route.name === 'Diet') {
@@ -75,6 +81,13 @@ export const BottomTabNavigator: React.FC = () => {
         component={GymScreen}
         options={{ tabBarLabel: 'Gym' }}
       />
+      {isTrainer && (
+        <Tab.Screen
+          name="Clients"
+          component={ClientsScreen}
+          options={{ tabBarLabel: 'Clienti' }}
+        />
+      )}
       <Tab.Screen
         name="Measurements"
         component={MeasurementsScreen}

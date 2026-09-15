@@ -9,6 +9,7 @@ export interface ClientAssociation {
   avatar_url?: string | null;
   linked_at: string;
   notes?: string;
+  isArchived?: boolean;
 }
 
 export interface UserProfile {

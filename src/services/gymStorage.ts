@@ -169,6 +169,34 @@ export const gymStorage = {
     }
   },
 
+  async hardDeleteClientGymData(clientId: string): Promise<void> {
+    try {
+      // 1. Schede associate al cliente
+      const routines = await this.loadRoutines();
+      const deletedRoutineIds = new Set(
+        routines.filter((r) => r.owner_id === clientId).map((r) => r.id)
+      );
+      const updatedRoutines = routines.filter((r) => r.owner_id !== clientId);
+      await this.saveRoutines(updatedRoutines);
+
+      // 2. Workout e log associati al cliente o alle sue schede
+      const workouts = await this.loadWorkouts();
+      const updatedWorkouts = workouts.filter(
+        (w) =>
+          w.owner_id !== clientId &&
+          !(w.routine_id != null && deletedRoutineIds.has(w.routine_id))
+      );
+      await this.saveWorkouts(updatedWorkouts);
+
+      // 3. Cartelle del cliente
+      const folders = await this.loadFolders();
+      const updatedFolders = folders.filter((f) => f.owner_id !== clientId);
+      await this.saveFolders(updatedFolders);
+    } catch (e) {
+      console.warn('Errore cascade delete gym data per cliente:', clientId, e);
+    }
+  },
+
   async clearAllData(): Promise<void> {
     try {
       await AsyncStorage.multiRemove([
