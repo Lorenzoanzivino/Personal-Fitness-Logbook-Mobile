@@ -21,7 +21,6 @@ import { CustomConfirmModal } from '../../components/CustomConfirmModal';
 import { ToastFeedback, ToastType } from '../../components/ToastFeedback';
 import { YouTubeModalOverlay } from '../../components/YouTubeModalOverlay';
 import { BandSelectDropdown } from '../../components/BandSelectDropdown';
-import { exportRoutineToPdf } from '../../services/pdfService';
 
 type NewRoutineModalRouteProp = RouteProp<RootStackParamList, 'NewRoutineModal'>;
 
@@ -100,30 +99,6 @@ export const NewRoutineModal: React.FC = () => {
   const routineId = route.params?.routineId;
   const isEditing = Boolean(routineId);
   const existingRoutine = isEditing ? routines.find((r) => r.id === routineId) : null;
-
-  const [isExportingPdf, setIsExportingPdf] = useState(false);
-
-  const handleExportPdf = async () => {
-    if (!existingRoutine || isExportingPdf) return;
-    try {
-      setIsExportingPdf(true);
-      await exportRoutineToPdf(existingRoutine, selectedClient?.name);
-      setToast({
-        visible: true,
-        type: 'success',
-        message: `PDF esportato per "${existingRoutine.name}"`,
-      });
-    } catch (err) {
-      console.error('Errore export PDF in modal:', err);
-      setToast({
-        visible: true,
-        type: 'error',
-        message: 'Impossibile esportare il PDF.',
-      });
-    } finally {
-      setIsExportingPdf(false);
-    }
-  };
 
   const [name, setName] = useState('');
   const [durationWeeks, setDurationWeeks] = useState('8');
@@ -470,12 +445,21 @@ export const NewRoutineModal: React.FC = () => {
       return;
     }
 
-    // Check duplicate name
-    const isDuplicate = routines.some(
-      (r) =>
-        (!isEditing || r.id !== routineId) &&
-        r.name.trim().toLowerCase() === trimmedName.toLowerCase()
-    );
+    // Check duplicate name (escludi la scheda in lavorazione in caso di modifica)
+    const currentId = existingRoutine ? existingRoutine.id : routineId;
+    const targetOwnerId = isEditing
+      ? existingRoutine?.owner_id
+      : (isDelegatedMode && selectedClient ? selectedClient.id : undefined);
+
+    const isDuplicate = routines.some((r) => {
+      if (isEditing && (r.id === existingRoutine?.id || (currentId != null && String(r.id) === String(currentId)))) {
+        return false;
+      }
+      if (targetOwnerId && r.owner_id && r.owner_id !== targetOwnerId) {
+        return false;
+      }
+      return r.name.trim().toLowerCase() === trimmedName.toLowerCase();
+    });
     if (isDuplicate) {
       showToast('error', `Esiste già una scheda denominata "${trimmedName}". Scegli un nome univoco.`);
       return;
@@ -620,32 +604,14 @@ export const NewRoutineModal: React.FC = () => {
         </View>
 
         {isEditing && (
-          <>
-            {existingRoutine && (
-              <Pressable
-                onPress={handleExportPdf}
-                disabled={isExportingPdf}
-                style={styles.headerExportBtn}
-                accessibilityRole="button"
-                accessibilityLabel="Esporta scheda in PDF"
-              >
-                {isExportingPdf ? (
-                  <ActivityIndicator size="small" color={colors.accent} />
-                ) : (
-                  <Text style={styles.headerExportText}>📄 PDF</Text>
-                )}
-              </Pressable>
-            )}
-
-            <Pressable
-              onPress={() => setShowDeleteConfirm(true)}
-              style={styles.headerDeleteBtn}
-              accessibilityRole="button"
-              accessibilityLabel="Elimina scheda"
-            >
-              <Text style={styles.headerDeleteText}>🗑 Elimina</Text>
-            </Pressable>
-          </>
+          <Pressable
+            onPress={() => setShowDeleteConfirm(true)}
+            style={styles.headerDeleteBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Elimina scheda"
+          >
+            <Text style={styles.headerDeleteText}>🗑 Elimina</Text>
+          </Pressable>
         )}
 
         <Pressable
@@ -1541,22 +1507,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
-  },
-  headerExportBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: layout.borderRadiusSm,
-    backgroundColor: 'rgba(14, 165, 233, 0.15)',
-    borderWidth: 1,
-    borderColor: 'rgba(14, 165, 233, 0.4)',
-    marginRight: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerExportText: {
-    color: colors.accent,
-    fontSize: 12,
-    fontWeight: '800',
   },
   headerDeleteBtn: {
     paddingHorizontal: 10,

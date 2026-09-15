@@ -9,6 +9,7 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import * as DocumentPicker from 'expo-document-picker';
@@ -25,6 +26,7 @@ import { measurementStorage } from '../services/measurementStorage';
 import { dietStorage } from '../services/dietStorage';
 import { profileService } from '../services/profileService';
 import { authService } from '../services/authService';
+import { exportFullBackup, shareBackupFile } from '../services/backupService';
 import { useGym } from '../context/GymContext';
 import { useMeasurements } from '../context/MeasurementContext';
 import { useDiet } from '../context/DietContext';
@@ -81,49 +83,32 @@ export const SettingsScreen: React.FC = () => {
     setToast({ visible: true, type, message });
   };
 
-  // Export Logic
-  const handleExportJson = async () => {
-    try {
-      const [routines, workouts, folders, exercises, measurements, diets] = await Promise.all([
-        gymStorage.loadRoutines(),
-        gymStorage.loadWorkouts(),
-        gymStorage.loadFolders(),
-        gymStorage.loadExercises(),
-        measurementStorage.loadMeasurements(),
-        dietStorage.loadDiets(),
-      ]);
-      const profile = profileService.getCurrentProfile();
-      const backupData = {
-        exportedAt: new Date().toISOString(),
-        appName: 'MY TRAIN UP',
-        version: '1.0.0',
-        profile,
-        stats: {
-          routinesCount: routines.length,
-          workoutsCount: workouts.length,
-          foldersCount: folders.length,
-          exercisesCount: exercises.length,
-          measurementsCount: measurements.length,
-          dietsCount: diets.length,
-        },
-        data: {
-          routines,
-          workouts,
-          folders,
-          exercises,
-          measurements,
-          diets,
-        },
-      };
+  const [isExportingBackup, setIsExportingBackup] = useState(false);
 
-      const jsonString = JSON.stringify(backupData, null, 2);
+  // Export Logic - Full Backup with Sharing / Download
+  const handleExportFullBackup = async () => {
+    if (isExportingBackup) return;
+    try {
+      setIsExportingBackup(true);
+      const jsonString = await exportFullBackup();
+      await shareBackupFile(jsonString);
+      showToast('success', 'Backup JSON completo esportato con successo!');
+    } catch (err: any) {
+      console.error('Errore esportazione backup:', err);
+      showToast('error', err?.message || 'Errore durante l\'esportazione del backup.');
+    } finally {
+      setIsExportingBackup(false);
+    }
+  };
+
+  // Export Logic - Copy to Clipboard fallback
+  const handleCopyJsonToClipboard = async () => {
+    try {
+      const jsonString = await exportFullBackup();
       await Clipboard.setStringAsync(jsonString);
-      showToast(
-        'success',
-        `Backup JSON (${backupData.stats.routinesCount} schede, ${backupData.stats.workoutsCount} sessioni, ${backupData.stats.measurementsCount} pesate) copiato negli appunti!`
-      );
+      showToast('success', 'Backup JSON completo copiato negli appunti!');
     } catch {
-      showToast('error', 'Errore durante la generazione del backup JSON.');
+      showToast('error', 'Errore durante la copia del backup JSON negli appunti.');
     }
   };
 
@@ -351,15 +336,37 @@ export const SettingsScreen: React.FC = () => {
 
           <View style={styles.backupActionsContainer}>
             <Pressable
-              onPress={handleExportJson}
+              onPress={handleExportFullBackup}
+              disabled={isExportingBackup}
+              style={({ pressed }) => [
+                styles.primaryActionButton,
+                isExportingBackup && styles.actionButtonDisabled,
+                { opacity: pressed ? 0.85 : 1 },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="Esporta Backup Completo"
+            >
+              {isExportingBackup ? (
+                <View style={styles.buttonLoadingRow}>
+                  <ActivityIndicator size="small" color={colors.white} />
+                  <Text style={styles.primaryActionButtonText}>Esportazione in corso...</Text>
+                </View>
+              ) : (
+                <Text style={styles.primaryActionButtonText}>📦 Esporta Backup Completo</Text>
+              )}
+            </Pressable>
+
+            <Pressable
+              onPress={handleCopyJsonToClipboard}
+              disabled={isExportingBackup}
               style={({ pressed }) => [
                 styles.actionButton,
                 { opacity: pressed ? 0.8 : 1 },
               ]}
               accessibilityRole="button"
-              accessibilityLabel="Esporta backup JSON negli appunti"
+              accessibilityLabel="Copia backup JSON negli appunti"
             >
-              <Text style={styles.actionButtonText}>⬇ Copia Backup JSON negli Appunti</Text>
+              <Text style={styles.actionButtonText}>📋 Copia Backup JSON negli Appunti</Text>
             </Pressable>
 
             <Pressable
@@ -369,6 +376,7 @@ export const SettingsScreen: React.FC = () => {
                 setParsedBackup(null);
                 setParseError(null);
               }}
+              disabled={isExportingBackup}
               style={({ pressed }) => [
                 styles.importActionButton,
                 { opacity: pressed ? 0.8 : 1 },
@@ -661,6 +669,27 @@ const styles = StyleSheet.create({
   },
   backupActionsContainer: {
     gap: 10,
+  },
+  primaryActionButton: {
+    backgroundColor: colors.accent,
+    height: layout.minTouchTarget,
+    borderRadius: layout.borderRadiusMd,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  primaryActionButtonText: {
+    color: colors.white,
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  buttonLoadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  actionButtonDisabled: {
+    opacity: 0.6,
   },
   actionButton: {
     backgroundColor: colors.backgroundSubtle,

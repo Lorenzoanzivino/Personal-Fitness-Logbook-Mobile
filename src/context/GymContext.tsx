@@ -387,8 +387,13 @@ export const GymProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const updateRoutine = async (id: number, data: Partial<WorkoutRoutine>): Promise<void> => {
     if (data.name) {
       const trimmedName = data.name.trim();
+      const currentRoutine = routines.find((r) => String(r.id) === String(id));
+      const targetOwnerId = data.owner_id || currentRoutine?.owner_id || activeOwnerId;
       const duplicate = routines.find(
-        (r) => r.id !== id && r.name.trim().toLowerCase() === trimmedName.toLowerCase()
+        (r) =>
+          String(r.id) !== String(id) &&
+          (r.owner_id || userProfile.id || 'trainer-1') === targetOwnerId &&
+          r.name.trim().toLowerCase() === trimmedName.toLowerCase()
       );
       if (duplicate) {
         throw new Error(`Esiste già una scheda con il nome "${trimmedName}". Scegli un nome diverso.`);

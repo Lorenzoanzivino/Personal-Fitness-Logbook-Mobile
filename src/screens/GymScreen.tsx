@@ -20,7 +20,6 @@ import { Card } from '../components/Card';
 import { CustomConfirmModal } from '../components/CustomConfirmModal';
 import { ToastFeedback, ToastType } from '../components/ToastFeedback';
 import { ScreenBackgroundWrapper } from '../components/ScreenBackgroundWrapper';
-import { exportRoutineToPdf } from '../services/pdfService';
 
 type SubTab = 'routines' | 'history' | 'progression' | 'exercises';
 type GymScreenRouteProp = RouteProp<RootTabParamList, 'Gym'>;
@@ -139,28 +138,6 @@ export const GymScreen: React.FC = () => {
 
   const showToast = (type: ToastType, message: string) => {
     setToast({ visible: true, type, message });
-  };
-
-  // PDF Export loading state
-  const [exportingRoutineId, setExportingRoutineId] = useState<number | null>(null);
-
-  const handleExportPdf = async (routine: WorkoutRoutine) => {
-    if (exportingRoutineId) return;
-    try {
-      setExportingRoutineId(routine.id);
-      const athleteName =
-        selectedClient?.name ||
-        (userRole === 'CLIENT'
-          ? `${userProfile.first_name} ${userProfile.last_name}`.trim()
-          : undefined);
-      await exportRoutineToPdf(routine, athleteName);
-      showToast('success', `PDF generato per "${routine.name}"`);
-    } catch (err) {
-      console.error('Errore generazione PDF scheda:', err);
-      showToast('error', 'Impossibile generare il PDF della scheda.');
-    } finally {
-      setExportingRoutineId(null);
-    }
   };
 
   // Filtered exercises for Catalog tab
@@ -992,32 +969,6 @@ export const GymScreen: React.FC = () => {
                             <Text style={styles.launchButtonText}>▶ AVVIA LIVE LOGGER</Text>
                           </Pressable>
 
-                          {/* Export PDF Button */}
-                          <Pressable
-                            onPress={() => handleExportPdf(routine)}
-                            disabled={exportingRoutineId === routine.id}
-                            style={[
-                              styles.exportPdfBtn,
-                              exportingRoutineId === routine.id && { opacity: 0.6 },
-                            ]}
-                            accessibilityRole="button"
-                            accessibilityLabel="Esporta scheda in PDF"
-                          >
-                            {exportingRoutineId === routine.id ? (
-                              <ActivityIndicator size="small" color={colors.accent} />
-                            ) : (
-                              <>
-                                <Ionicons
-                                  name="print-outline"
-                                  size={15}
-                                  color={colors.accent}
-                                  style={{ marginRight: 4 }}
-                                />
-                                <Text style={styles.exportPdfBtnText}>PDF</Text>
-                              </>
-                            )}
-                          </Pressable>
-
                           {userRole !== 'CLIENT' && (
                             <>
                               {/* Edit Routine (Builder) */}
@@ -1814,23 +1765,6 @@ const styles = StyleSheet.create({
   },
   launchButtonText: {
     color: '#0F172A',
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  exportPdfBtn: {
-    height: layout.minTouchTarget,
-    paddingHorizontal: 10,
-    backgroundColor: colors.backgroundSubtle,
-    borderRadius: layout.borderRadiusMd,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    marginRight: 6,
-    borderWidth: 1,
-    borderColor: 'rgba(14, 165, 233, 0.4)',
-  },
-  exportPdfBtnText: {
-    color: colors.accent,
     fontSize: 12,
     fontWeight: '800',
   },
