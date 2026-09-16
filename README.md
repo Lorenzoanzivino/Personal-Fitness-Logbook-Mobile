@@ -201,11 +201,11 @@ npx expo start
 ### Configurazione Variabili d'Ambiente (Opzionale)
 Crea un file `.env` nella root del progetto per personalizzare le credenziali master del Trainer:
 ```env
-EXPO_PUBLIC_TRAINER_USERNAME=Lorenzo
-EXPO_PUBLIC_TRAINER_PASSWORD=admin123
-EXPO_PUBLIC_TRAINER_FIRST_NAME=Lorenzo
-EXPO_PUBLIC_TRAINER_LAST_NAME=Anzivino
-EXPO_PUBLIC_TRAINER_EMAIL=lorenzo.anzivino@example.com
+EXPO_PUBLIC_TRAINER_USERNAME = username
+EXPO_PUBLIC_TRAINER_PASSWORD = password
+EXPO_PUBLIC_TRAINER_FIRST_NAME = name
+EXPO_PUBLIC_TRAINER_LAST_NAME = lastname
+EXPO_PUBLIC_TRAINER_EMAIL = name@example.com
 ```
 
 ---
