@@ -7,6 +7,10 @@ interface MeasurementContextType {
   latestMeasurement: BodyMeasurement | null;
   loading: boolean;
   addMeasurement: (dto: CreateBodyMeasurementDto) => Promise<BodyMeasurement>;
+  updateMeasurement: (
+    id: number,
+    dto: Partial<CreateBodyMeasurementDto>
+  ) => Promise<BodyMeasurement | null>;
   deleteMeasurement: (id: number) => Promise<void>;
   clearAllMeasurements: () => Promise<void>;
   reloadMeasurements: () => Promise<void>;
@@ -45,6 +49,20 @@ export const MeasurementProvider: React.FC<{ children: ReactNode }> = ({ childre
     return created;
   };
 
+  const updateMeasurement = async (
+    id: number,
+    dto: Partial<CreateBodyMeasurementDto>
+  ): Promise<BodyMeasurement | null> => {
+    const updated = await measurementStorage.updateMeasurement(id, dto);
+    if (updated) {
+      const newList = measurements.map((m) => (m.id === id ? updated : m)).sort(
+        (a, b) => (b.recorded_at > a.recorded_at ? 1 : -1)
+      );
+      setMeasurements(newList);
+    }
+    return updated;
+  };
+
   const deleteMeasurement = async (id: number): Promise<void> => {
     await measurementStorage.deleteMeasurement(id);
     setMeasurements((prev) => prev.filter((m) => m.id !== id));
@@ -64,6 +82,7 @@ export const MeasurementProvider: React.FC<{ children: ReactNode }> = ({ childre
         latestMeasurement,
         loading,
         addMeasurement,
+        updateMeasurement,
         deleteMeasurement,
         clearAllMeasurements,
         reloadMeasurements: loadData,

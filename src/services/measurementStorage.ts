@@ -63,6 +63,39 @@ export const measurementStorage = {
     return newMeasurement;
   },
 
+  async updateMeasurement(
+    id: number,
+    updatedData: Partial<CreateBodyMeasurementDto>
+  ): Promise<BodyMeasurement | null> {
+    const list = await this.loadMeasurements();
+    const index = list.findIndex((m) => m.id === id);
+    if (index === -1) return null;
+
+    const existing = list[index];
+    const updatedWeight =
+      updatedData.weight_kg !== undefined ? updatedData.weight_kg : existing.weight_kg;
+
+    const otherMeasurements = list.filter((m) => m.id !== id);
+    const sorted = [...otherMeasurements].sort((a, b) => (b.recorded_at > a.recorded_at ? 1 : -1));
+    const previous = sorted[0];
+    const delta = previous
+      ? Math.round((updatedWeight - previous.weight_kg) * 10) / 10
+      : existing.weight_delta_kg;
+
+    const updatedItem: BodyMeasurement = {
+      ...existing,
+      ...updatedData,
+      weight_kg: updatedWeight,
+      weight_delta_kg: delta,
+      notes: updatedData.notes !== undefined ? (updatedData.notes?.trim() || null) : existing.notes,
+      updated_at: new Date().toISOString(),
+    };
+
+    list[index] = updatedItem;
+    await this.saveMeasurements(list);
+    return updatedItem;
+  },
+
   async deleteMeasurement(id: number): Promise<void> {
     const list = await this.loadMeasurements();
     const updated = list.filter((m) => m.id !== id);

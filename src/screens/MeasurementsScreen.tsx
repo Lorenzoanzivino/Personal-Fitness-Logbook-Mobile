@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
+import React, { useState, useRef } from 'react';
+import { View, Text, TextInput, StyleSheet, ScrollView, Pressable } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { TabNavigationProp } from '../types/navigation';
 import { colors } from '../theme/colors';
@@ -14,12 +14,24 @@ import { ScreenBackgroundWrapper } from '../components/ScreenBackgroundWrapper';
 
 export const MeasurementsScreen: React.FC = () => {
   const navigation = useNavigation<TabNavigationProp<'Measurements'>>();
-  const { measurements, latestMeasurement, deleteMeasurement } = useMeasurements();
+  const scrollViewRef = useRef<ScrollView>(null);
+  const { measurements, latestMeasurement, addMeasurement, updateMeasurement, deleteMeasurement } =
+    useMeasurements();
 
   // Expanded card tracking (allow multiple or single expanded)
   const [expandedId, setExpandedId] = useState<number | null>(
     measurements.length > 0 ? measurements[0].id : null
   );
+
+  // Edit Mode & Form States
+  const [editingMeasurementId, setEditingMeasurementId] = useState<number | null>(null);
+  const [formDate, setFormDate] = useState(new Date().toISOString().split('T')[0]);
+  const [formWeight, setFormWeight] = useState('');
+  const [formBmi, setFormBmi] = useState('');
+  const [formBodyFat, setFormBodyFat] = useState('');
+  const [formLeanMass, setFormLeanMass] = useState('');
+  const [formMuscleMass, setFormMuscleMass] = useState('');
+  const [formNotes, setFormNotes] = useState('');
 
   // Custom Confirm Modal & Toast state
   const [confirmModal, setConfirmModal] = useState<{
@@ -70,6 +82,97 @@ export const MeasurementsScreen: React.FC = () => {
     });
   };
 
+  const handleStartEdit = (m: BodyMeasurement) => {
+    setEditingMeasurementId(m.id);
+    setFormDate(m.recorded_at ? m.recorded_at.split('T')[0] : new Date().toISOString().split('T')[0]);
+    setFormWeight(m.weight_kg !== undefined && m.weight_kg !== null ? String(m.weight_kg) : '');
+    setFormBmi(m.bmi !== undefined && m.bmi !== null ? String(m.bmi) : '');
+    setFormBodyFat(m.body_fat_pct !== undefined && m.body_fat_pct !== null ? String(m.body_fat_pct) : '');
+    setFormLeanMass(m.lean_mass_kg !== undefined && m.lean_mass_kg !== null ? String(m.lean_mass_kg) : '');
+    setFormMuscleMass(m.muscle_mass_kg !== undefined && m.muscle_mass_kg !== null ? String(m.muscle_mass_kg) : '');
+    setFormNotes(m.notes || '');
+
+    // Scroll to top
+    scrollViewRef.current?.scrollTo({ y: 0, animated: true });
+    setToast({
+      visible: true,
+      type: 'info',
+      message: 'Misurazione caricata nel modulo. Modifica i dati e premi "Aggiorna Misurazione".',
+    });
+  };
+
+  const handleCancelEdit = () => {
+    setEditingMeasurementId(null);
+    setFormDate(new Date().toISOString().split('T')[0]);
+    setFormWeight('');
+    setFormBmi('');
+    setFormBodyFat('');
+    setFormLeanMass('');
+    setFormMuscleMass('');
+    setFormNotes('');
+  };
+
+  const handleSaveOrUpdate = async () => {
+    const cleanWeight = parseFloat(formWeight.replace(',', '.'));
+    if (isNaN(cleanWeight) || cleanWeight <= 0 || cleanWeight > 350) {
+      setToast({
+        visible: true,
+        type: 'error',
+        message: 'Inserisci un valore valido per il peso in kg (es. 78.5).',
+      });
+      return;
+    }
+
+    const parsedBmi = formBmi.trim() ? parseFloat(formBmi.replace(',', '.')) : undefined;
+    const parsedBf = formBodyFat.trim() ? parseFloat(formBodyFat.replace(',', '.')) : undefined;
+    const parsedLean = formLeanMass.trim() ? parseFloat(formLeanMass.replace(',', '.')) : undefined;
+    const parsedMuscle = formMuscleMass.trim() ? parseFloat(formMuscleMass.replace(',', '.')) : undefined;
+
+    try {
+      if (editingMeasurementId !== null) {
+        await updateMeasurement(editingMeasurementId, {
+          recorded_at: formDate.trim() ? `${formDate.trim()}T12:00:00.000Z` : new Date().toISOString(),
+          weight_kg: cleanWeight,
+          bmi: parsedBmi !== undefined && !isNaN(parsedBmi) ? parsedBmi : undefined,
+          body_fat_pct: parsedBf !== undefined && !isNaN(parsedBf) ? parsedBf : undefined,
+          lean_mass_kg: parsedLean !== undefined && !isNaN(parsedLean) ? parsedLean : undefined,
+          muscle_mass_kg: parsedMuscle !== undefined && !isNaN(parsedMuscle) ? parsedMuscle : undefined,
+          notes: formNotes.trim() || undefined,
+        });
+
+        setToast({
+          visible: true,
+          type: 'success',
+          message: 'Misurazione aggiornata con successo! ⚖️',
+        });
+      } else {
+        await addMeasurement({
+          recorded_at: formDate.trim() ? `${formDate.trim()}T12:00:00.000Z` : new Date().toISOString(),
+          weight_kg: cleanWeight,
+          bmi: parsedBmi !== undefined && !isNaN(parsedBmi) ? parsedBmi : undefined,
+          body_fat_pct: parsedBf !== undefined && !isNaN(parsedBf) ? parsedBf : undefined,
+          lean_mass_kg: parsedLean !== undefined && !isNaN(parsedLean) ? parsedLean : undefined,
+          muscle_mass_kg: parsedMuscle !== undefined && !isNaN(parsedMuscle) ? parsedMuscle : undefined,
+          notes: formNotes.trim() || undefined,
+        });
+
+        setToast({
+          visible: true,
+          type: 'success',
+          message: 'Nuova misurazione registrata con successo! ⚖️',
+        });
+      }
+
+      handleCancelEdit();
+    } catch {
+      setToast({
+        visible: true,
+        type: 'error',
+        message: 'Errore durante il salvataggio della misurazione.',
+      });
+    }
+  };
+
   const formatDate = (dateStr: string): string => {
     try {
       const d = new Date(dateStr);
@@ -98,6 +201,7 @@ export const MeasurementsScreen: React.FC = () => {
   return (
     <ScreenBackgroundWrapper style={styles.container}>
       <ScrollView
+        ref={scrollViewRef}
         style={styles.container}
         contentContainerStyle={styles.contentContainer}
         showsVerticalScrollIndicator={false}
@@ -109,7 +213,10 @@ export const MeasurementsScreen: React.FC = () => {
             <Text style={typography.h1}>Misurazioni</Text>
           </View>
           <Pressable
-            onPress={() => navigation.navigate('MeasurementModal')}
+            onPress={() => {
+              handleCancelEdit();
+              scrollViewRef.current?.scrollTo({ y: 0, animated: true });
+            }}
             style={({ pressed }) => [
               styles.actionButton,
               { opacity: pressed ? 0.85 : 1 },
@@ -120,6 +227,139 @@ export const MeasurementsScreen: React.FC = () => {
             <Text style={styles.actionButtonText}>+ Nuova Pesata</Text>
           </Pressable>
         </View>
+
+        {/* Input & Edit Form Card */}
+        <Card style={styles.formCard}>
+          <View style={styles.formCardHeader}>
+            <View style={{ flex: 1 }}>
+              <Text style={typography.label}>
+                {editingMeasurementId ? 'MODALITÀ MODIFICA' : 'REGISTRAZIONE MISURAZIONE'}
+              </Text>
+              <Text style={typography.h3}>
+                {editingMeasurementId ? 'Modifica Rilevazione' : 'Inserisci Nuova Rilevazione'}
+              </Text>
+            </View>
+            {editingMeasurementId && (
+              <View style={styles.editModeBadge}>
+                <Text style={styles.editModeBadgeText}>✏️ Modifica Attiva</Text>
+              </View>
+            )}
+          </View>
+
+          {/* Form Fields Grid */}
+          <View style={styles.formRow}>
+            <View style={[styles.formField, { flex: 1, marginRight: 8 }]}>
+              <Text style={styles.inputLabel}>DATA (AAAA-MM-GG) *</Text>
+              <TextInput
+                style={styles.textInput}
+                value={formDate}
+                onChangeText={setFormDate}
+                placeholder="2026-09-16"
+                placeholderTextColor={colors.textMuted}
+              />
+            </View>
+            <View style={[styles.formField, { flex: 1 }]}>
+              <Text style={styles.inputLabel}>PESO (KG) *</Text>
+              <TextInput
+                style={styles.textInput}
+                value={formWeight}
+                onChangeText={setFormWeight}
+                placeholder="es. 78.5"
+                placeholderTextColor={colors.textMuted}
+                keyboardType="numeric"
+              />
+            </View>
+          </View>
+
+          <View style={styles.formRow}>
+            <View style={[styles.formField, { flex: 1, marginRight: 8 }]}>
+              <Text style={styles.inputLabel}>MASSA GRASSA (%)</Text>
+              <TextInput
+                style={styles.textInput}
+                value={formBodyFat}
+                onChangeText={setFormBodyFat}
+                placeholder="es. 14.5"
+                placeholderTextColor={colors.textMuted}
+                keyboardType="numeric"
+              />
+            </View>
+            <View style={[styles.formField, { flex: 1 }]}>
+              <Text style={styles.inputLabel}>MASSA MAGRA (KG)</Text>
+              <TextInput
+                style={styles.textInput}
+                value={formLeanMass}
+                onChangeText={setFormLeanMass}
+                placeholder="es. 64.0"
+                placeholderTextColor={colors.textMuted}
+                keyboardType="numeric"
+              />
+            </View>
+          </View>
+
+          <View style={styles.formRow}>
+            <View style={[styles.formField, { flex: 1, marginRight: 8 }]}>
+              <Text style={styles.inputLabel}>MASSA MUSCOLARE (KG)</Text>
+              <TextInput
+                style={styles.textInput}
+                value={formMuscleMass}
+                onChangeText={setFormMuscleMass}
+                placeholder="es. 35.2"
+                placeholderTextColor={colors.textMuted}
+                keyboardType="numeric"
+              />
+            </View>
+            <View style={[styles.formField, { flex: 1 }]}>
+              <Text style={styles.inputLabel}>BMI</Text>
+              <TextInput
+                style={styles.textInput}
+                value={formBmi}
+                onChangeText={setFormBmi}
+                placeholder="es. 23.4"
+                placeholderTextColor={colors.textMuted}
+                keyboardType="numeric"
+              />
+            </View>
+          </View>
+
+          <View style={styles.formField}>
+            <Text style={styles.inputLabel}>CIRCONFERENZE / NOTE</Text>
+            <TextInput
+              style={styles.textInput}
+              value={formNotes}
+              onChangeText={setFormNotes}
+              placeholder="es. Girovita: 82cm, Braccio: 38cm, Petto: 104cm"
+              placeholderTextColor={colors.textMuted}
+            />
+          </View>
+
+          {/* Form Action Buttons */}
+          <View style={styles.formActionsRow}>
+            {editingMeasurementId && (
+              <Pressable
+                onPress={handleCancelEdit}
+                style={styles.cancelEditBtn}
+                accessibilityRole="button"
+                accessibilityLabel="Annulla modifica"
+              >
+                <Text style={styles.cancelEditBtnText}>✕ Annulla</Text>
+              </Pressable>
+            )}
+
+            <Pressable
+              onPress={handleSaveOrUpdate}
+              style={[
+                styles.saveButton,
+                editingMeasurementId ? styles.updateButtonActive : null,
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel={editingMeasurementId ? 'Aggiorna Misurazione' : 'Salva Misurazione'}
+            >
+              <Text style={styles.saveButtonText}>
+                {editingMeasurementId ? '💾 Aggiorna Misurazione' : '+ Salva Misurazione'}
+              </Text>
+            </Pressable>
+          </View>
+        </Card>
 
         {/* Main Metric Card */}
         {latestMeasurement ? (
@@ -392,12 +632,21 @@ export const MeasurementsScreen: React.FC = () => {
 
                   <View style={styles.expandedFooter}>
                     <Pressable
+                      onPress={() => handleStartEdit(m)}
+                      style={styles.editButton}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Modifica pesata del ${formatDate(m.recorded_at)}`}
+                    >
+                      <Text style={styles.editButtonText}>✏️ Modifica</Text>
+                    </Pressable>
+
+                    <Pressable
                       onPress={() => handleDeleteConfirm(m)}
                       style={styles.deleteButton}
                       accessibilityRole="button"
                       accessibilityLabel={`Elimina pesata del ${formatDate(m.recorded_at)}`}
                     >
-                      <Text style={styles.deleteButtonText}>🗑 Elimina Rilevazione</Text>
+                      <Text style={styles.deleteButtonText}>🗑 Elimina</Text>
                     </Pressable>
                   </View>
                 </View>
@@ -436,7 +685,7 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     padding: 14,
-    paddingBottom: 100,
+    paddingBottom: 140,
   },
   headerRow: {
     flexDirection: 'row',
@@ -633,7 +882,22 @@ const styles = StyleSheet.create({
   expandedFooter: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
+    alignItems: 'center',
     marginTop: 10,
+  },
+  editButton: {
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: 4,
+    backgroundColor: colors.accentMuted,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    marginRight: 8,
+  },
+  editButtonText: {
+    color: colors.accent,
+    fontSize: 11,
+    fontWeight: '700',
   },
   deleteButton: {
     paddingVertical: 5,
@@ -647,5 +911,94 @@ const styles = StyleSheet.create({
     color: colors.danger,
     fontSize: 11,
     fontWeight: '700',
+  },
+
+  // Input & Edit Form Styles
+  formCard: {
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 14,
+  },
+  formCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  editModeBadge: {
+    backgroundColor: 'rgba(234, 88, 15, 0.15)',
+    borderColor: colors.accent,
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  editModeBadgeText: {
+    color: colors.accent,
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  formRow: {
+    flexDirection: 'row',
+    marginBottom: 10,
+  },
+  formField: {
+    marginBottom: 10,
+  },
+  inputLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: colors.textSecondary,
+    marginBottom: 4,
+    letterSpacing: 0.5,
+  },
+  textInput: {
+    backgroundColor: colors.backgroundElevated,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: layout.borderRadiusSm,
+    color: colors.text,
+    fontSize: 13,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  formActionsRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 4,
+  },
+  saveButton: {
+    backgroundColor: colors.accent,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: layout.borderRadiusSm,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  updateButtonActive: {
+    backgroundColor: colors.emerald,
+  },
+  saveButtonText: {
+    color: '#0F172A',
+    fontWeight: '800',
+    fontSize: 12,
+  },
+  cancelEditBtn: {
+    backgroundColor: colors.backgroundElevated,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: layout.borderRadiusSm,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cancelEditBtnText: {
+    color: colors.textMuted,
+    fontWeight: '700',
+    fontSize: 12,
   },
 });

@@ -256,7 +256,7 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     padding: 14,
-    paddingBottom: 100,
+    paddingBottom: 140,
   },
   heroSection: {
     marginBottom: 16,

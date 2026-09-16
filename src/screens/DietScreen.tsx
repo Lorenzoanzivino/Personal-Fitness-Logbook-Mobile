@@ -19,6 +19,7 @@ import { DietPdf } from '../types/diet';
 import { CustomConfirmModal } from '../components/CustomConfirmModal';
 import { ToastFeedback, ToastType } from '../components/ToastFeedback';
 import { ScreenBackgroundWrapper } from '../components/ScreenBackgroundWrapper';
+import * as Sharing from 'expo-sharing';
 
 export const DietScreen: React.FC = () => {
   const navigation = useNavigation<TabNavigationProp<'Diet'>>();
@@ -58,7 +59,7 @@ export const DietScreen: React.FC = () => {
     return `${Math.round(bytes / 1024)} KB`;
   };
 
-  const handleOpenPdfNative = async (diet: DietPdf) => {
+  const handleOpenPdf = async (diet: DietPdf) => {
     if (!diet.file_path) {
       setToast({
         visible: true,
@@ -68,14 +69,27 @@ export const DietScreen: React.FC = () => {
       return;
     }
     try {
-      await Linking.openURL(diet.file_path);
-    } catch (err) {
-      console.warn('Errore apertura PDF nativo:', err);
-      setToast({
-        visible: true,
-        type: 'error',
-        message: 'Impossibile aprire il file con il lettore PDF di sistema.',
+      const isAvailable = await Sharing.isAvailableAsync();
+      if (!isAvailable) {
+        await Linking.openURL(diet.file_path);
+        return;
+      }
+      await Sharing.shareAsync(diet.file_path, {
+        mimeType: 'application/pdf',
+        dialogTitle: diet.name || 'Apri Piano Dieta PDF',
+        UTI: 'com.adobe.pdf',
       });
+    } catch (err) {
+      console.warn('Errore apertura PDF tramite Sharing:', err);
+      try {
+        await Linking.openURL(diet.file_path);
+      } catch {
+        setToast({
+          visible: true,
+          type: 'error',
+          message: 'Impossibile aprire il file con il visualizzatore PDF di sistema.',
+        });
+      }
     }
   };
 
@@ -164,7 +178,7 @@ export const DietScreen: React.FC = () => {
             </Text>
 
             <Pressable
-              onPress={() => handleOpenPdfNative(activeDiet)}
+              onPress={() => handleOpenPdf(activeDiet)}
               style={styles.pdfInfoBox}
               accessibilityRole="button"
               accessibilityLabel="Apri documento PDF con lettore nativo"
@@ -182,7 +196,7 @@ export const DietScreen: React.FC = () => {
             </Pressable>
 
             <Pressable
-              onPress={() => handleOpenPdfNative(activeDiet)}
+              onPress={() => handleOpenPdf(activeDiet)}
               style={({ pressed }) => [
                 styles.viewPdfButton,
                 { opacity: pressed ? 0.85 : 1 },
@@ -233,7 +247,7 @@ export const DietScreen: React.FC = () => {
 
                 <View style={styles.archiveActions}>
                   <Pressable
-                    onPress={() => handleOpenPdfNative(diet)}
+                    onPress={() => handleOpenPdf(diet)}
                     style={styles.archiveViewBtn}
                     accessibilityRole="button"
                     accessibilityLabel={`Apri ${diet.name} con lettore nativo`}
@@ -297,6 +311,30 @@ export const DietScreen: React.FC = () => {
             </Text>
 
             <View style={styles.actionModalButtons}>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.actionButton,
+                  styles.replaceButton,
+                  { backgroundColor: colors.accentMuted, borderColor: colors.accent, marginBottom: 10 },
+                  pressed && { opacity: 0.85 },
+                ]}
+                onPress={() => {
+                  const target = actionModal.diet;
+                  setActionModal({ visible: false, diet: null });
+                  if (target) {
+                    handleOpenPdf(target);
+                  }
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Apri documento PDF"
+              >
+                <Text style={styles.actionButtonIcon}>📄</Text>
+                <View style={styles.actionButtonTextCol}>
+                  <Text style={[styles.replaceButtonText, { color: colors.accent }]}>Apri Documento PDF</Text>
+                  <Text style={styles.actionButtonSubtext}>Visualizza con il lettore PDF di sistema</Text>
+                </View>
+              </Pressable>
+
               <Pressable
                 style={({ pressed }) => [
                   styles.actionButton,
@@ -383,7 +421,7 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     padding: 14,
-    paddingBottom: 100,
+    paddingBottom: 140,
   },
   headerRow: {
     flexDirection: 'row',

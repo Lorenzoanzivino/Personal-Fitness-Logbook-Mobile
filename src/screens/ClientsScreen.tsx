@@ -37,6 +37,7 @@ export const ClientsScreen: React.FC = () => {
 
   // Search & Filter
   const [searchQuery, setSearchQuery] = useState('');
+  const [isActiveClientsExpanded, setIsActiveClientsExpanded] = useState(true);
   const [showArchived, setShowArchived] = useState(false);
 
   // New Client Form State
@@ -378,134 +379,144 @@ export const ClientsScreen: React.FC = () => {
         {/* ========================================== */}
         {/* SECTION 2: LISTA CLIENTI ATTIVI           */}
         {/* ========================================== */}
-        <View style={styles.sectionHeaderRow}>
-          <View>
+        <Pressable
+          style={styles.sectionHeaderRow}
+          onPress={() => setIsActiveClientsExpanded((prev) => !prev)}
+          accessibilityRole="button"
+          accessibilityLabel="Mostra o nascondi atleti attivi"
+        >
+          <View style={{ flex: 1 }}>
             <Text style={typography.h2}>Atleti Attivi ({activeClients.length})</Text>
             <Text style={typography.caption}>Seleziona un atleta per compilare le sue schede</Text>
           </View>
-        </View>
+          <Text style={styles.activeChevron}>{isActiveClientsExpanded ? '▲' : '▼'}</Text>
+        </Pressable>
 
-        {/* Search Bar */}
-        {activeClients.length > 0 && (
-          <View style={styles.searchBar}>
-            <Text style={styles.searchIcon}>🔍</Text>
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Cerca atleta per nome o username..."
-              placeholderTextColor={colors.textMuted}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-            />
-            {searchQuery.length > 0 && (
-              <Pressable onPress={() => setSearchQuery('')} style={styles.searchClearBtn}>
-                <Text style={styles.searchClearText}>✕</Text>
-              </Pressable>
+        {isActiveClientsExpanded && (
+          <>
+            {/* Search Bar */}
+            {activeClients.length > 0 && (
+              <View style={styles.searchBar}>
+                <Text style={styles.searchIcon}>🔍</Text>
+                <TextInput
+                  style={styles.searchInput}
+                  placeholder="Cerca atleta per nome o username..."
+                  placeholderTextColor={colors.textMuted}
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                />
+                {searchQuery.length > 0 && (
+                  <Pressable onPress={() => setSearchQuery('')} style={styles.searchClearBtn}>
+                    <Text style={styles.searchClearText}>✕</Text>
+                  </Pressable>
+                )}
+              </View>
             )}
-          </View>
-        )}
 
-        {/* Client Cards List */}
-        {filteredActiveClients.length === 0 ? (
-          <Card style={styles.emptyCard}>
-            <Text style={styles.emptyIcon}>👥</Text>
-            <Text style={styles.emptyTitle}>
-              {searchQuery ? 'Nessun atleta corrispondente' : 'Nessun atleta registrato'}
-            </Text>
-            <Text style={styles.emptyDesc}>
-              {searchQuery
-                ? 'Prova a cercare con un termine differente.'
-                : 'Usa il modulo in alto per creare il primo account cliente.'}
-            </Text>
-          </Card>
-        ) : (
-          filteredActiveClients.map((client) => {
-            const clientName = `${client.first_name} ${client.last_name}`.trim() || client.username;
-            const initials = clientName.substring(0, 2).toUpperCase();
-            const createdDate = new Date(client.created_at).toLocaleDateString('it-IT');
+            {/* Client Cards List */}
+            {filteredActiveClients.length === 0 ? (
+              <Card style={styles.emptyCard}>
+                <Text style={styles.emptyIcon}>👥</Text>
+                <Text style={styles.emptyTitle}>
+                  {searchQuery ? 'Nessun atleta corrispondente' : 'Nessun atleta registrato'}
+                </Text>
+                <Text style={styles.emptyDesc}>
+                  {searchQuery
+                    ? 'Prova a cercare con un termine differente.'
+                    : 'Usa il modulo in alto per creare il primo account cliente.'}
+                </Text>
+              </Card>
+            ) : (
+              filteredActiveClients.map((client) => {
+                const clientName = `${client.first_name} ${client.last_name}`.trim() || client.username;
+                const initials = clientName.substring(0, 2).toUpperCase();
+                const createdDate = new Date(client.created_at).toLocaleDateString('it-IT');
 
-            return (
-              <Card key={client.id} style={styles.clientCard}>
-                <View style={styles.clientCardTop}>
-                  <View style={styles.avatarPill}>
-                    <Text style={styles.avatarText}>{initials}</Text>
-                  </View>
-                  <View style={{ flex: 1, marginLeft: 12 }}>
-                    <View style={styles.clientNameRow}>
-                      <Text style={styles.clientCardName}>{clientName}</Text>
-                      <View style={styles.userHandlePill}>
-                        <Text style={styles.userHandleText}>@{client.username}</Text>
+                return (
+                  <Card key={client.id} style={styles.clientCard}>
+                    <View style={styles.clientCardTop}>
+                      <View style={styles.avatarPill}>
+                        <Text style={styles.avatarText}>{initials}</Text>
+                      </View>
+                      <View style={{ flex: 1, marginLeft: 12 }}>
+                        <View style={styles.clientNameRow}>
+                          <Text style={styles.clientCardName}>{clientName}</Text>
+                          <View style={styles.userHandlePill}>
+                            <Text style={styles.userHandleText}>@{client.username}</Text>
+                          </View>
+                        </View>
+                        <Text style={styles.clientDateText}>Associato il {createdDate}</Text>
+                        {client.notes ? (
+                          <Text style={styles.clientNotesText} numberOfLines={2}>
+                            {client.notes}
+                          </Text>
+                        ) : null}
                       </View>
                     </View>
-                    <Text style={styles.clientDateText}>Associato il {createdDate}</Text>
-                    {client.notes ? (
-                      <Text style={styles.clientNotesText} numberOfLines={2}>
-                        {client.notes}
-                      </Text>
-                    ) : null}
-                  </View>
-                </View>
 
-                {/* OTP & Access Info */}
-                <View style={styles.otpRow}>
-                  <View style={styles.otpPillContainer}>
-                    <Text style={styles.otpLabel}>OTP DI ACCESSO:</Text>
-                    <Text style={styles.otpCode}>{client.otp}</Text>
-                  </View>
-                  <Pressable
-                    onPress={() => handleCopyOtp(client.otp, clientName)}
-                    style={styles.copyPillBtn}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Copia OTP di ${clientName}`}
-                  >
-                    <Text style={styles.copyPillBtnText}>📋 Copia</Text>
-                  </Pressable>
-                </View>
+                    {/* OTP & Access Info */}
+                    <View style={styles.otpRow}>
+                      <View style={styles.otpPillContainer}>
+                        <Text style={styles.otpLabel}>OTP DI ACCESSO:</Text>
+                        <Text style={styles.otpCode}>{client.otp}</Text>
+                      </View>
+                      <Pressable
+                        onPress={() => handleCopyOtp(client.otp, clientName)}
+                        style={styles.copyPillBtn}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Copia OTP di ${clientName}`}
+                      >
+                        <Text style={styles.copyPillBtnText}>📋 Copia</Text>
+                      </Pressable>
+                    </View>
 
-                {/* Action Buttons */}
-                <View style={styles.clientActionsRow}>
-                  <Pressable
-                    onPress={() => handleManageClientRoutines(client)}
-                    style={styles.manageRoutinesBtn}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Gestisci schede di ${clientName}`}
-                  >
-                    <Text style={styles.manageRoutinesBtnText} numberOfLines={1}>
-                      📋 Schede
-                    </Text>
-                  </Pressable>
+                    {/* Action Buttons */}
+                    <View style={styles.clientActionsRow}>
+                      <Pressable
+                        onPress={() => handleManageClientRoutines(client)}
+                        style={styles.manageRoutinesBtn}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Gestisci schede di ${clientName}`}
+                      >
+                        <Text style={styles.manageRoutinesBtnText} numberOfLines={1}>
+                          📋 Schede
+                        </Text>
+                      </Pressable>
 
-                  <Pressable
-                    onPress={() => handleArchiveConfirm(client)}
-                    style={styles.archiveBtn}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Archivia atleta ${clientName}`}
-                  >
-                    <Text style={styles.archiveBtnText} numberOfLines={1}>
-                      📦 Archivia
-                    </Text>
-                  </Pressable>
+                      <Pressable
+                        onPress={() => handleArchiveConfirm(client)}
+                        style={styles.archiveBtn}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Archivia atleta ${clientName}`}
+                      >
+                        <Text style={styles.archiveBtnText} numberOfLines={1}>
+                          📦 Archivia
+                        </Text>
+                      </Pressable>
 
-                  <Pressable
-                    onPress={() => {
-                      console.log('[ClientsScreen] Click Elimina su client:', client.id);
-                      handleHardDeleteConfirm(client);
-                    }}
-                    style={({ pressed }) => [
-                      styles.activeDeleteBtn,
-                      { opacity: pressed ? 0.7 : 1 },
-                    ]}
-                    hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Elimina definitivamente ${clientName}`}
-                  >
-                    <Text style={styles.activeDeleteBtnText} numberOfLines={1}>
-                      🗑️ Elimina
-                    </Text>
-                  </Pressable>
-                </View>
-              </Card>
-            );
-          })
+                      <Pressable
+                        onPress={() => {
+                          console.log('[ClientsScreen] Click Elimina su client:', client.id);
+                          handleHardDeleteConfirm(client);
+                        }}
+                        style={({ pressed }) => [
+                          styles.activeDeleteBtn,
+                          { opacity: pressed ? 0.7 : 1 },
+                        ]}
+                        hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Elimina definitivamente ${clientName}`}
+                      >
+                        <Text style={styles.activeDeleteBtnText} numberOfLines={1}>
+                          🗑️ Elimina
+                        </Text>
+                      </Pressable>
+                    </View>
+                  </Card>
+                );
+              })
+            )}
+          </>
         )}
 
         {/* ========================================== */}
@@ -598,7 +609,7 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     padding: layout.cardPadding,
-    paddingBottom: 100,
+    paddingBottom: 140,
   },
   header: {
     marginBottom: spacing.md,
@@ -764,7 +775,17 @@ const styles = StyleSheet.create({
     color: colors.accent,
   },
   sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: 10,
+    paddingVertical: 4,
+  },
+  activeChevron: {
+    fontSize: 14,
+    color: colors.accent,
+    fontWeight: '700',
+    paddingLeft: 8,
   },
   searchBar: {
     flexDirection: 'row',

@@ -1,280 +1,233 @@
 # MY TRAIN UP 🏋️‍♂️
 
-> **Personal Fitness & Workout Logbook Mobile**  
-> Applicazione mobile avanzata per Personal Trainer e Atleti, sviluppata in **React Native** con **Expo SDK 57** e **TypeScript**, con architettura locale **Offline-First**, gestione dei ruoli (RBAC), timer immersivi per tecniche speciali e tracciamento biometrico e nutrizionale completo.
+> **Personal Fitness, Gym Hub & Workout Logbook Mobile**  
+> Applicazione mobile avanzata per Personal Trainer e Atleti, sviluppata in **React Native** con **Expo SDK 57** e **TypeScript**, dotata di architettura locale **Offline-First**, gestione dei ruoli (RBAC), motore di allenamento per tecniche speciali e tracciamento biometrico e nutrizionale completo.
 
 ---
 
 ## 📌 Indice
 1. [Cos'è MY TRAIN UP](#-cosè-my-train-up)
-2. [Caratteristiche Principali](#-caratteristiche-principali)
-   - [Area Allenamento & Live Workout Engine](#1-area-allenamento--live-workout-engine)
-   - [Timer Speciali & Sveglia Acustica](#2-timer-speciali--sveglia-acustica)
-   - [Architettura RBAC: Trainer vs Cliente](#3-architettura-rbac-trainer-vs-cliente)
-   - [Misurazioni & Composizione Corporea](#4-misurazioni--composizione-corporea)
-   - [Piani Alimentari & Gestione PDF](#5-piani-alimentari--gestione-pdf)
-   - [Backup & Portabilità Dati JSON](#6-backup--portabilità-dati-json)
-3. [Guida all'Uso](#-guida-alluso)
-   - [Autenticazione & Primo Accesso](#autenticazione--primo-accesso)
-   - [Gestione Schede e Sessioni Live](#gestione-schede-e-sessioni-live)
-   - [Generazione Codici OTP per Allievi](#generazione-codici-otp-per-allievi)
-   - [Esportazione e Ripristino Backup](#esportazione-e-ripristino-backup)
-4. [Struttura del Progetto](#-struttura-del-progetto)
-5. [Stack Tecnologico](#-stack-tecnologico)
-6. [Installazione ed Esecuzione](#-installazione-ed-esecuzione)
-7. [Compilazione Standalone (APK Android)](#-compilazione-standalone-apk-android)
+2. [Architettura del Sistema](#-architettura-del-sistema)
+3. [Ruoli RBAC & Controllo Accessi](#-ruoli-rbac--controllo-accessi)
+4. [Autenticazione Doppia & Onboarding](#-autenticazione-doppia--onboarding)
+5. [Gym Engine & Gestione Schede](#-gym-engine--gestione-schede)
+6. [Misurazioni & Composizione Corporea](#-misurazioni--composizione-corporea)
+7. [Piani Nutrizionali & Visualizzatore PDF](#-piani-nutrizionali--visualizzatore-pdf)
+8. [Backup & Portabilità Dati JSON](#-backup--portabilità-dati-json)
+9. [Stack Tecnologico](#-stack-tecnologico)
+10. [Installazione ed Esecuzione](#-installazione-ed-esecuzione)
+11. [Compilazione Standalone (APK Android)](#-compilazione-standalone-apk-android)
 
 ---
 
 ## 📖 Cos'è MY TRAIN UP
 
-**MY TRAIN UP** è un diario di bordo digitale per sala pesi e preparazione atletica. Risolve le limitazioni delle comuni applicazioni di fitness integrando:
-- **Gestione completa dei mesocicli** con cartelle e suddivisione per split.
-- **Supporto nativo alle tecniche ad alta intensità** (Stripping / Dropset e Rest-Pause) con gestione separata dei recuperi intermedi e del recupero finale tra serie.
-- **Timer per lavoro isometrico** (es. Plank o tenute a tempo) affiancato al timer di recupero classico.
-- **Sveglia acustica insistente** che suona in loop al termine del recupero per impedire distrazioni durante la sessione.
-- **Riconoscimento dei carichi assistiti e zavorrati** per esercizi a corpo libero (trazioni con zavorra `+kg` o alleggerimento con elastico `-kg`).
-- **Doppia interfaccia Personal Trainer / Atleta**: il trainer programma le schede e gestisce il proprio catalogo allievi; l'atleta esegue il workout sincronizzato in sola lettura.
-- **Architettura Offline-First**: tutti i dati risiedono sul dispositivo in `AsyncStorage`, con esportazione e ripristino istantaneo in formato JSON.
+**MY TRAIN UP** è una suite mobile completa progettata sia per il preparatore atletico sia per l'atleta in sala pesi. Permette di gestire il percorso di allenamento a 360 gradi senza dipendere da connessioni internet costanti, eliminando la dispersione su fogli Excel o note cartacee:
+
+- **Architettura 100% Offline-First**: tutti i dati risiedono localmente sul dispositivo in `AsyncStorage`.
+- **Doppio Ruolo Specializzato**: interfaccia Master per il Personal Trainer e interfaccia di esecuzione sincronizzata per l'Allievo.
+- **Supporto Nativo a Tecniche Intensive**: Stripping/Dropset e Rest-Pause con doppio recupero automatizzato, oltre a esercizi isometrici a tempo.
+- **Sveglia Acustica Continua**: allarme sonoro in loop al termine dei recuperi per prevenire cali di concentrazione e ritardi tra le serie.
+- **Tracciamento Corporeo & Piani Alimentari**: storico impedenziometrico con modifica in-place e visualizzatore nativo di PDF nutrizionali.
 
 ---
 
-## ⚡ Caratteristiche Principali
+## 🏗️ Architettura del Sistema
 
-### 1. Area Allenamento & Live Workout Engine
-- **Catalogo Esercizi (46 Esercizi Predefiniti)**:
-  - Copre tutti i distretti muscolari principali: Petto, Dorso, Spalle, Bicipiti, Tricipiti, Quadricipiti, Femorali, Polpacci, Addome.
-  - Ogni esercizio include gruppo muscolare, tipo (`reps` o `time`), descrizione tecnica e supporto ai video/reel tutorial di YouTube.
-  - Possibilità di aggiungere esercizi personalizzati o archiviare quelli non utilizzati.
-- **Builder di Schede & Organizzazione in Cartelle**:
-  - Creazione rapida di schede con note descrittive, durata in settimane e categorizzazione per cartella (es. *Ipertrofia*, *Forza*, *Definizione*).
-  - Multi-selezione per eliminazione o spostamento massivo.
-- **Live Workout Logger**:
-  - Interfaccia ottimizzata per l'uso durante l'allenamento in sala pesi con tasti touch ampi e ad alto contrasto.
-  - Calcolo del volume totale (tonnellaggio sollevato in kg) in tempo reale.
-  - Rilevamento automatico dell'**Overload Progressivo**: mostra i carichi e le ripetizioni dell'ultima sessione per monitorare i miglioramenti.
+L'applicazione adotta un'architettura decentralizzata e modulare basata su **React Context** e repository di storage isolati:
 
-### 2. Timer Speciali & Sveglia Acustica
-- **Timer di Lavoro Isometrico (Tension-Time)**:
-  - Per gli esercizi isometrici (`time`), compare il pulsante dedicato **`▶ Avvia Lavoro ([N]s)`**.
-  - Si apre un overlay ambra con badge **`🔥 LAVORO ATTIVO (ISOMETRIA)`** che conta alla rovescia i secondi di tenuta.
-  - Al termine emette un segnale acustico, segna automaticamente la serie come completata e avvia il timer di recupero classico.
-- **Timer di Recupero con Allarme in Loop**:
-  - Overlay a schermo intero ad alta visibilità con indicazione di serie ed esercizio.
-  - Scaduto il tempo, l'applicazione emette una sveglia sonora continua (`alarm.wav`) accompagnata dal pulsante **"SPEGNI SVEGLIA"** che l'atleta deve toccare per confermare la ripresa dell'allenamento.
-- **Doppio Recupero per Tecniche Speciali**:
-  - **Stripping / Dropset**: conteggio automatico del recupero breve tra un carico scalato e l'altro (es. 10s) e del recupero completo a fine serie (es. 90s).
-  - **Rest-Pause**: recupero intra-serie tra i micro-set e recupero completo tra le serie effettive.
-
-### 3. Architettura RBAC: Trainer vs Cliente
-- **Profilo Trainer**:
-  - Visualizzazione sdoppiata in cima alla tab Gym:
-    - **`🏋️ I Miei Allenamenti`**: schede personali, storico allenamenti e progressioni del Trainer.
-    - **`👥 Gestione Schede Clienti`**: lista allievi collegati, creazione e assegnazione di schede personalizzate per singolo allievo.
-  - Generatore di codici OTP a scadenza per abilitare nuovi atleti.
-- **Profilo Cliente / Atleta**:
-  - Visualizza in automatico le schede assegnate dal proprio preparatore.
-  - Modalità esecuzione protetta (impedisce alterazioni accidentali della struttura del programma).
-
-### 4. Misurazioni & Composizione Corporea
-- Registrazione rapida di peso corporeo e parametri bioimpedenziometrici:
-  - BMI, % Massa Grassa, Massa Magra (kg), Massa Muscolare (kg), Acqua Corporea (%), Massa Ossea (kg), Grasso Viscerale, BMR e AMR (kcal).
-- Calcolo automatico del differenziale (`Δ kg`) rispetto alla misurazione precedente.
-- Grafico temporale interattivo dell'andamento ponderale con schede di riepilogo statistico.
-
-### 5. Piani Alimentari & Gestione PDF
-- Caricamento di documenti PDF dalla memoria del telefono (rilasciati da nutrizionista o preparatore).
-- Visualizzatore PDF nativo integrato a schermo intero.
-- Gestione piano nutrizionale attivo vs archivio storico dei piani precedenti.
-
-### 6. Backup & Portabilità Dati JSON
-- **Esportazione Istantanea**:
-  - Estrae con un tocco l'intero database locale (schede, sessioni, cartelle, pesate, diete e profilo) in formato JSON pulito e formattato, copiandolo negli appunti.
-- **Importazione & Ripristino**:
-  - Modale interattivo con supporto sia a **"Incolla dagli Appunti"** sia a **"Sfoglia File .json"**.
-  - **Validatore a caldo**: controlla la sintassi e genera un'anteprima delle entità riconosciute (`✓ BACKUP VALIDO RICONOSCIUTO`).
-  - **Ripristino a caldo**: aggiorna tutti gli archivi persistenti e ricarica immediatamente i contesti React senza necessità di riavviare l'app.
-- **Zona di Pericolo**:
-  - Funzione di reset totale del database locale, mantenendo **rigorosamente intatto il catalogo dei 46 esercizi predefiniti**.
-
----
-
-## 📱 Guida all'Uso
-
-### Autenticazione & Primo Accesso
-- **Accesso Trainer**:
-  - Le credenziali Master del Trainer sono protette e configurate privatamente nel file `.env` (ignorato da Git) tramite le variabili:
-    - `EXPO_PUBLIC_TRAINER_USERNAME`
-    - `EXPO_PUBLIC_TRAINER_PASSWORD`
-  - Per ambienti dimostrativi o di test, il file [.env.example](.env.example) mette a disposizione valori segnaposto standard (`trainer` / `password123`).
-- **Accesso Cliente / Allievo**:
-  - Username registrato dall'istruttore.
-  - Codice OTP univoco a 6 cifre generato dal Trainer nella sezione Profilo.
-
-### Gestione Schede e Sessioni Live
-1. Apri la tab **Gym**.
-2. Seleziona una scheda esistente o tocca **`+ Nuova Scheda`** per crearne una.
-3. Tocca **`Avvia Allenamento`**: si aprirà il **Live Logger**.
-4. Per ogni serie:
-   - Se l'esercizio è a ripetizioni: inserisci peso e reps, tocca la spunta verde `✓` per registrare e far partire il timer di recupero.
-   - Se l'esercizio è isometrico (Plank): tocca **`▶ Avvia Lavoro`**, mantieni la posizione fino al segnale acustico e premi **`✓ COMPLETA & AVVIA RECUPERO`**.
-5. Al termine dell'allenamento, tocca **`✓ Salva & Concludi`** a fondo pagina per archiviare la sessione nel registro storico.
-
-### Generazione Codici OTP per Allievi
-1. Accedi come Trainer e recati nella tab **Profilo**.
-2. Nella sezione **Gestione Allievi**, tocca **`+ Genera Codice OTP`**.
-3. Inserisci il nome dell'allievo e l'indirizzo email: il sistema genererà un codice univoco con validità temporale.
-4. L'allievo utilizzerà questo codice dalla schermata di login per collegarsi automaticamente alla scheda predisposta dal trainer.
-
-### Esportazione e Ripristino Backup
-1. Accedi alla tab **Setup (Impostazioni)**.
-2. Per esportare: tocca **`⬇ Copia Backup JSON negli Appunti`** e incolla il testo in una nota o chat per custodirlo.
-3. Per ripristinare: tocca **`⬆ Importa / Ripristina Backup JSON`**, incolla il testo o seleziona il file, verifica l'anteprima verde e tocca **`✅ Ripristina Questo Backup`**.
-
----
-
-## 📂 Struttura del Progetto
-
-```text
-Personal-Fitness-Logbook-Mobile/
-├── assets/                          # Immagini, icone e audio
-│   ├── alarm.wav                    # Allarme acustico in loop per timer
-│   ├── icon.png                     # Icona nativa rotonda launcher Android
-│   ├── logo1.png                    # Logo ufficiale MY TRAIN UP
-│   └── sfondo_app.jpg               # Sfondo ad alto contrasto per dark mode
-├── src/
-│   ├── components/                  # Componenti UI riutilizzabili
-│   │   ├── Avatar.tsx               # Gestione foto profilo atleta/trainer
-│   │   ├── Card.tsx                 # Contenitore card a tema scuro
-│   │   ├── CustomConfirmModal.tsx   # Modale di conferma personalizzato
-│   │   ├── Header.tsx               # Header globale con logo rotondo e guida ℹ
-│   │   ├── ImmersiveTimerOverlay.tsx# Timer a schermo intero (Recupero & Lavoro)
-│   │   ├── RestTimerWidget.tsx      # Widget compatto timer
-│   │   ├── ScreenBackgroundWrapper.tsx # Wrapper con sfondo sfocato e Safe Area
-│   │   ├── ToastFeedback.tsx        # Toast di notifica a comparsa
-│   │   └── WeightTrendChart.tsx     # Grafico andamento misurazioni
-│   ├── context/                     # Gestione stato globale React Context
-│   │   ├── AuthContext.tsx          # Gestione sessione, login e ruoli RBAC
-│   │   ├── DietContext.tsx          # Gestione stato piani alimentari PDF
-│   │   ├── GymContext.tsx           # Workout engine, calcolo volumi, schede e storico
-│   │   └── MeasurementContext.tsx   # Gestione misure corporee e trend
-│   ├── data/                        # Dataset predefiniti
-│   │   ├── defaultExercises.ts      # 46 esercizi base precaricati e immutabili
-│   │   └── defaultRoutines.ts       # Template iniziali
-│   ├── navigation/                  # Architettura di navigazione
-│   │   ├── BottomTabNavigator.tsx   # Tab bar inferiore con gestione insets Android
-│   │   ├── navigationRef.ts         # Riferimento di navigazione sicuro e decouple
-│   │   └── RootStackNavigator.tsx   # Stack principale e modali a schermo intero
-│   ├── screens/                     # Schermate dell'applicazione
-│   │   ├── auth/
-│   │   │   └── LoginScreen.tsx      # Login con logo rotondo e selezione ruolo
-│   │   ├── HomeScreen.tsx           # Dashboard panoramica e riepilogo settimanale
-│   │   ├── GymScreen.tsx            # Selettore Trainer/Clienti, schede e catalogo
-│   │   ├── MeasurementsScreen.tsx   # Gestione pesate, composizione corporea e grafici
-│   │   ├── DietScreen.tsx           # Consultazione e gestione piani alimentari PDF
-│   │   ├── ProfileScreen.tsx        # Profilo atleta, avatar e generatore codici OTP
-│   │   ├── SettingsScreen.tsx       # Backup JSON (Export/Import), info e Reset
-│   │   └── modals/                  # Modali operativi (Workout, Routine, Dieta, ecc.)
-│   │       ├── ExerciseModal.tsx    # Dettaglio esercizio con video YouTube
-│   │       ├── MeasurementModal.tsx # Inserimento nuova pesata
-│   │       ├── NewRoutineModal.tsx  # Builder creazione/modifica scheda
-│   │       ├── PdfViewerModal.tsx   # Visualizzatore PDF nativo
-│   │       ├── UploadDietModal.tsx  # Upload file PDF dieta
-│   │       └── WorkoutModal.tsx     # Live Logger con timer di lavoro e recupero
-│   ├── services/                    # Layer di persistenza e API
-│   │   ├── api.ts                   # Client API e simulazione endpoint cloud
-│   │   ├── authService.ts           # Logica di autenticazione e validazione OTP
-│   │   ├── config.ts                # Configurazione endpoint e timeout di rete
-│   │   ├── dietStorage.ts           # Persistenza diete in AsyncStorage
-│   │   ├── gymStorage.ts            # Persistenza schede, workout, cartelle ed esercizi
-│   │   ├── measurementStorage.ts    # Persistenza misurazioni biometriche
-│   │   └── profileService.ts        # Persistenza profilo e gestione associazioni
-│   ├── theme/                       # Design System
-│   │   ├── colors.ts                # Palette scura, accenti sky-blue ed emerald
-│   │   ├── spacing.ts               # Layout, margini e target touch ergonomici
-│   │   └── typography.ts            # Gerarchia tipografica ad alta leggibilità
-│   └── types/                       # Definizioni TypeScript
-│       ├── api.ts, auth.ts, diet.ts, measurement.ts, navigation.ts, profile.ts, workout.ts
-├── App.tsx                          # Root Component con SafeAreaProvider
-├── app.json                         # Configurazione Expo & identificativi Android
-├── package.json                     # Dipendenze e script npm
-└── tsconfig.json                    # Configurazione compilatore TypeScript
+```
+src/
+├── components/          # Componenti UI riutilizzabili ad alto contrasto (Card, Avatar, Toast)
+├── context/             # State machine reattive (Auth, Gym, Measurement, Diet)
+├── navigation/          # RootStackNavigator con guardie di accesso e BottomTabNavigator
+├── screens/             # Schermate applicative (Home, Gym, Clients, Measurements, Diet, Profile, Settings)
+│   ├── auth/            # Schermata di Login e Onboarding primo accesso
+│   └── modals/          # Modali dedicati a Live Workout, Routine Builder, Pesate e PDF
+├── services/            # Storage service (AsyncStorage, FileSystem, Sharing, Backup)
+├── theme/               # Design token solidi Gym Dark (colors, spacing, typography)
+└── types/               # Contratti e DTO TypeScript rigorosamente tipizzati
 ```
 
+### Isolamento Dati in Storage Locale (`AsyncStorage`)
+- `@user_profile_v3`: Anagrafica e preferenze del profilo attivo.
+- `@fitness_provisioned_clients_v2`: Catalogo allievi gestiti dal Trainer.
+- `@gym_routines_v3` / `@gym_workouts_v3` / `@gym_folders_v3`: Schede, sessioni completate e cartelle mesociclo.
+- `@gym_exercises_v2`: Catalogo dei 46 esercizi muscolari con descrizioni e video.
+- `@measurements_v3`: Rilevazioni bioimpedenziometriche e pesate storiche.
+- `@diets_v3`: Registrazioni piani alimentari PDF.
+- `@avatar_${userId}`: Foto profilo isolate per singolo account per evitare collisioni visive al cambio utente.
+
 ---
 
-## 🛠️ Stack Tecnologico
+## 👥 Ruoli RBAC & Controllo Accessi
 
-| Componente | Tecnologia / Libreria | Versione |
-| :--- | :--- | :--- |
-| **Framework Base** | React Native | `0.86.3` |
-| **Piattaforma & Runtime** | Expo SDK | `~57.0.22` |
-| **Linguaggio** | TypeScript | `~6.0.3` |
-| **Navigazione** | React Navigation (Bottom Tabs & Native Stack) | `v7` |
-| **Persistenza Dati** | `@react-native-async-storage/async-storage` | `2.2.0` |
-| **Riproduzione Audio** | `expo-audio` | `~57.0.5` |
-| **File & Documenti** | `expo-document-picker` | `~57.0.2` |
-| **Immagini & Fotocamera** | `expo-image-picker` | `~57.0.17` |
-| **Appunti di Sistema** | `expo-clipboard` | `~57.0.2` |
-| **Safe Area Insets** | `react-native-safe-area-context` | `^5.9.1` |
+Il sistema implementa un modello a controllo degli accessi basato sui ruoli (**Role-Based Access Control**):
+
+### 1. Ruolo TRAINER (Master)
+- Accesso completo e sbloccato a tutte le sezioni dell'app.
+- **Sezione I Miei Allenamenti**: programmazione e log delle sessioni personali.
+- **Sezione Gestione Clienti**:
+  * Creazione account allievo con Nome, Cognome e Obiettivi.
+  * Generazione trasparente dell'username iniziale e del codice OTP di primo accesso.
+  * Compilazione e assegnazione in delega delle schede di allenamento per ciascun allievo.
+  * Archiviazione (soft-delete) e ripristino o eliminazione definitiva degli atleti.
+  * Lista atleti attivi collassabile per una consultazione rapida e pulita.
+
+### 2. Ruolo CLIENT (Atleta Subordinato)
+- Accesso focalizzato all'esecuzione e al monitoraggio dei propri progressi.
+- Visualizzazione automatica delle schede assegnate dal proprio preparatore.
+- Live Workout Logger protetto (struttura scheda non modificabile accidentalmente durante l'allenamento).
+- Tab e comandi di gestione clienti non visibili.
+- Banner di autenticazione dedicato nel Profilo con stato **"✓ Accesso Verificato"** e indicazione esplicita del Trainer associato.
+
+---
+
+## 🔐 Autenticazione Doppia & Onboarding
+
+Per conciliare la massima sicurezza con la semplicità di recupero credenziali:
+
+1. **Doppia Modalità di Login**:
+   - L'atleta può accedere inserendo il proprio **Username** accompagnato dalla **Password Personale** (impostata dall'utente) **OPPURE** tramite il **Codice OTP** originario rilasciato dal Trainer.
+   - L'OTP funge da chiave master perpetua di emergenza, garantendo all'atleta di non rimanere mai bloccato fuori dall'app anche in caso di password smarrita.
+2. **Onboarding Obbligatorio al Primo Accesso (`ClientOnboardingScreen`)**:
+   - Se un atleta accede per la prima volta con OTP (`is_profile_completed === false`), la navigazione normale viene bloccata a livello di router (`RootStackNavigator`).
+   - Schermata a schermo intero dedicata:
+     * Dati anagrafici di sola lettura (Nome, Cognome e Trainer assegnato).
+     * Scelta di un **Username personalizzato** facoltativo (utilizzato nel saluto `Ciao, [USERNAME] 👋` della Home).
+     * Impostazione della **Nuova Password** personale obbligatoria con visibilità attivabile/disattivabile.
+     * Inserimento opzionale di data di nascita e altezza corporea (cm).
+   - Al tocco su **"Salva e Accedi ➔"**, il profilo viene marcato come completato e l'atleta viene indirizzato alla Home.
+3. **Logout Globale nell'Header**:
+   - Icona di disconnessione sempre accessibile nell'header superiore dell'applicazione con finestra di dialogo modale di conferma per prevenire tocchi accidentali.
+
+---
+
+## 🏋️ Gym Engine & Gestione Schede
+
+### Catalogo Esercizi (46 Predefiniti)
+- Classificazione anatomica: Petto, Dorso, Spalle, Bicipiti, Tricipiti, Quadricipiti, Femorali, Polpacci, Addome.
+- Tipologia flessibile: a ripetizioni (`reps`) o a tempo di tenuta (`time`).
+- Link integrati a video ed esercitazioni YouTube consultabili direttamente dall'app.
+
+### Builder di Schede & Cartelle Mesociclo
+- Creazione rapida di routine con suddivisione settimanale e split giornalieri.
+- Organizzazione in cartelle categorizzate (es. *Forza*, *Ipertrofia*, *Mantenimento*).
+- **Clonazione avanzata**: duplicazione istantanea di singole schede o operazioni batch su più routine selezionate contemporaneamente.
+
+### Tecniche Speciali & Sveglia Acustica
+- **Stripping (Dropset)**: gestione differenziata del recupero breve tra i carichi scalati (es. 10 secondi) e del recupero lungo tra le serie complete (es. 90 secondi).
+- **Rest-Pause**: recupero intra-serie tra i micro-set e recupero inter-serie completo.
+- **Isometria Attiva**: timer ambra a schermo intero che calcola il tempo di contrazione isometrica (es. Plank) prima di avviare automaticamente il timer di riposo.
+- **Sveglia Sonora in Loop (`alarm.wav`)**: al termine di ogni conto alla rovescia, l'app suona in maniera insistente fino a quando l'atleta non tocca il pulsante **"SPEGNI SVEGLIA"**.
+- **Sovraccarico Progressivo**: visualizzazione a confronto dei carichi e delle ripetizioni eseguite nella sessione precedente per facilitare l'incremento prestazionale.
+
+---
+
+## ⚖️ Misurazioni & Composizione Corporea
+
+La sezione **Misurazioni** permette di tenere traccia della composizione corporea nel tempo:
+
+- **Modulo In-Place di Registrazione & Modifica**:
+  * Posizionato in cima alla schermata per un inserimento immediato.
+  * In modalità standard: permette di inserire rapidamente data, peso e parametri impedenziometrici.
+  * In modalità modifica: al tocco sul pulsante **"✏️ Modifica"** presente su ciascuna card dello storico, i campi vengono popolati automaticamente con i valori selezionati e il pulsante si trasforma in **"Aggiorna Misurazione"**.
+- **Parametri Impedenziometrici Supportati**:
+  * Peso corporeo (kg) con calcolo automatico del differenziale (`Δ kg`) rispetto all'ultima pesata.
+  * Calcolo automatico o manuale del **BMI** basato sull'altezza salvata nel profilo.
+  * Percentuale di Massa Grassa (`%`), Massa Magra (`kg`), Massa Muscolare (`kg`), Acqua Corporea (`%`), Massa Ossea (`kg`), Grasso Viscerale, BMR e AMR (`kcal`).
+  * Note cliniche e tracciamento delle circonferenze corporee (girovita, braccio, petto, cosce).
+
+---
+
+## 🥗 Piani Nutrizionali & Visualizzatore PDF
+
+- Caricamento di documenti PDF alimentari rilasciati dal nutrizionista o preparatore.
+- Distinzione tra **Piano Attivo** (in evidenza con data di inizio validità) e **Archivio Piani Passati**.
+- **Visualizzazione Nativa tramite `expo-sharing`**:
+  * Il tocco sul file PDF attiva il visualizzatore di sistema predefinito di Android e iOS (`Sharing.shareAsync`).
+  * Supporto a zoom, visualizzazione a pagine affiancate e strumenti di stampa/condivisione nativi del dispositivo.
+
+---
+
+## 💾 Backup & Portabilità Dati JSON
+
+L'architettura garantisce la totale proprietà dei dati da parte dell'utente:
+
+- **Esportazione Unificata**:
+  * Generazione di un unico file JSON contenente tutte le collezioni del database locale (profilo, clienti provisionati, routine, sessioni di allenamento, cartelle mesociclo, catalogo esercizi, pesate corporee e diete).
+  * Condivisione rapida tramite `expo-sharing` (`mytrainup_backup_[timestamp].json`) e copia negli appunti.
+- **Importazione & Ripristino a Caldo**:
+  * Modale con supporto a inserimento manuale di testo JSON o selezione da file system.
+  * Validazione a caldo della struttura del backup prima dell'applicazione.
+  * Ricaricamento immediato di tutti i Context React per riflettere i dati senza dover riavviare l'app.
+- **Reset di Emergenza**:
+  * Possibilità di cancellare lo storage locale preservando rigorosamente il catalogo base dei 46 esercizi muscolari.
+
+---
+
+## 💻 Stack Tecnologico
+
+- **Core**: [React Native](https://reactnative.dev/) + [Expo SDK 57](https://expo.dev/)
+- **Linguaggio**: [TypeScript](https://www.typescriptlang.org/) (Strict Mode)
+- **Routing & Navigazione**: [React Navigation v6](https://reactnavigation.org/) (Native Stack & Bottom Tabs)
+- **Persistenza**: [@react-native-async-storage/async-storage](https://github.com/react-native-async-storage/async-storage)
+- **Audio & Media**: [expo-av](https://docs.expo.dev/versions/latest/sdk/av/)
+- **File & Condivisione**: [expo-file-system](https://docs.expo.dev/versions/latest/sdk/filesystem/) & [expo-sharing](https://docs.expo.dev/versions/latest/sdk/sharing/)
+- **Interfaccia & Gesture**: [react-native-safe-area-context](https://github.com/th3rdwave/react-native-safe-area-context), [react-native-screens](https://github.com/software-mansion/react-native-screens)
 
 ---
 
 ## 🚀 Installazione ed Esecuzione
 
-### 1. Prerequisiti
-- **Node.js** (versione 18 o superiore consigliata)
-- **npm** o **yarn**
-- Dispositivo Android/iOS con l'applicazione **Expo Go** installata, oppure un emulatore configurato.
+### Prerequisiti
+- [Node.js](https://nodejs.org/) (v18 o superiore raccomandato)
+- Gestore di pacchetti `npm` o `yarn`
+- Applicazione **Expo Go** su smartphone Android/iOS oppure un emulatore configurato
 
-### 2. Installazione delle Dipendenze
-Dalla directory principale del progetto:
+### Setup Locale
 ```bash
+# 1. Clona il repository
+git clone https://github.com/Lorenzoanzivino/Personal-Fitness-Logbook-Mobile.git
+cd Personal-Fitness-Logbook-Mobile
+
+# 2. Installa le dipendenze
 npm install
-```
 
-### 3. Avvio dell'Ambiente di Sviluppo
-```bash
+# 3. Avvia il server di sviluppo Expo
 npx expo start
 ```
-- Premi `a` per avviare su emulatore Android.
-- Inquadra il **QR Code** dal tuo smartphone tramite l'app **Expo Go** per eseguire l'applicazione live sul tuo telefono.
 
-### 4. Verifica del Codice e Typecheck
-Per assicurarsi che non siano presenti errori di tipo TypeScript:
-```bash
-npx tsc --noEmit
+### Configurazione Variabili d'Ambiente (Opzionale)
+Crea un file `.env` nella root del progetto per personalizzare le credenziali master del Trainer:
+```env
+EXPO_PUBLIC_TRAINER_USERNAME=Lorenzo
+EXPO_PUBLIC_TRAINER_PASSWORD=admin123
+EXPO_PUBLIC_TRAINER_FIRST_NAME=Lorenzo
+EXPO_PUBLIC_TRAINER_LAST_NAME=Anzivino
+EXPO_PUBLIC_TRAINER_EMAIL=lorenzo.anzivino@example.com
 ```
 
 ---
 
-## 📦 Compilazione Standalone (APK Android)
+## 📱 Compilazione Standalone (APK Android)
 
-Il progetto è preconfigurato con package nativo `com.mytrainup.app` e profilo di build `preview` per compilare un file **.apk** installabile direttamente su qualsiasi smartphone Android senza passare dal Google Play Store.
+Per generare il pacchetto installabile `.apk` per dispositivi Android tramite **EAS Build**:
 
-### 1. Installazione di EAS CLI
 ```bash
+# 1. Installa EAS CLI globalmente
 npm install -g eas-cli
-```
 
-### 2. Login con il tuo account Expo
-```bash
+# 2. Effettua il login al tuo account Expo
 eas login
-```
 
-### 3. Configurazione del Progetto
-```bash
-eas project:init
-```
+# 3. Configura il progetto per la build
+eas build:configure
 
-### 4. Lancio della Compilazione Cloud Gratuita
-```bash
+# 4. Avvia la build dell'APK Android (profilo preview)
 eas build --platform android --profile preview
 ```
-Al termine della compilazione nel cloud di Expo, riceverai un link diretto per scaricare ed installare il file **.apk** sul tuo smartphone Android.
 
 ---
 
-## 🔒 Sicurezza & Privacy
-- Tutti i dati degli allenamenti, le note dei clienti, le pesate e i piani nutrizionali risiedono esclusivamente sul dispositivo mobile locale dell'utente in modalità cifrata/isolata da `AsyncStorage`.
-- La portabilità è garantita al 100% tramite il sistema di Backup JSON, permettendo di esportare e ripristinare il proprio storico in qualsiasi momento.
+*My Train Up © 2026 - Lorenzo Anzivino. Tutti i diritti riservati.*
