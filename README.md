@@ -17,6 +17,7 @@
 9. [Stack Tecnologico](#-stack-tecnologico)
 10. [Installazione ed Esecuzione](#-installazione-ed-esecuzione)
 11. [Compilazione Standalone (APK Android)](#-compilazione-standalone-apk-android)
+12. [Asset Grafici & Branding Android](#-asset-grafici--branding-android)
 
 ---
 
@@ -227,6 +228,20 @@ eas build:configure
 # 4. Avvia la build dell'APK Android (profilo preview)
 eas build --platform android --profile preview
 ```
+
+---
+
+## 🎨 Asset Grafici & Branding Android
+
+Per garantire una resa visiva ottimale sui dispositivi mobili ed evitare artefatti grafici:
+
+- **Icona Adattiva Android (`adaptiveIcon`)**:
+  * Utilizzo dell'asset `assets/adaptive-icon-padded.png` con una **Safe Zone al 60%** (circa 614x614 px) centrata su canvas 1024x1024 px.
+  * Previene l'effetto di ritaglio e zoom automatico applicato dai launcher Android (maschere circolari e squircle).
+  * Colore di sfondo coordinato arancione (`#FF6B00`).
+- **Splash Screen Nativo Trasparente**:
+  * Utilizzo dell'asset `assets/transparent.png` (pixel 1x1 trasparente) con sfondo `#0F172A` e `resizeMode: "contain"`.
+  * Elimina definitivamente il fallback visivo della griglia grigia di Expo durante il caricamento iniziale dell'app.
 
 ---
 
