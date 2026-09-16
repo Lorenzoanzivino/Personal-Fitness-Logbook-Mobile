@@ -10,6 +10,29 @@ import {
   ProfileResponseDto,
 } from '../types/profile';
 
+export const getAvatarStorageKey = (userId: string | number) => `@avatar_${String(userId)}`;
+
+export const getUserAvatar = async (userId: string | number): Promise<string | null> => {
+  try {
+    return await AsyncStorage.getItem(getAvatarStorageKey(userId));
+  } catch (e) {
+    console.warn('Errore lettura avatar da AsyncStorage:', e);
+    return null;
+  }
+};
+
+export const setUserAvatar = async (userId: string | number, uri: string | null): Promise<void> => {
+  try {
+    if (uri) {
+      await AsyncStorage.setItem(getAvatarStorageKey(userId), uri);
+    } else {
+      await AsyncStorage.removeItem(getAvatarStorageKey(userId));
+    }
+  } catch (e) {
+    console.warn('Errore salvataggio avatar in AsyncStorage:', e);
+  }
+};
+
 const STORAGE_KEY_PROFILE = '@user_profile_v3';
 
 const DEFAULT_TRAINER_CLIENTS: ClientAssociation[] = [];
@@ -55,12 +78,15 @@ const persistProfileState = async (profile: UserProfile) => {
 
 // Caricamento iniziale asincrono
 AsyncStorage.getItem(STORAGE_KEY_PROFILE)
-  .then((data) => {
+  .then(async (data) => {
     if (data) {
       const parsed = JSON.parse(data);
+      const userId = parsed.id || INITIAL_PROFILE.id;
+      const userAvatar = await getUserAvatar(userId);
       currentProfileState = {
         ...INITIAL_PROFILE,
         ...parsed,
+        avatar_url: userAvatar !== null ? userAvatar : (parsed.avatar_url || null),
         clients: parsed.clients || DEFAULT_TRAINER_CLIENTS,
       };
       notifyListeners();
@@ -111,9 +137,17 @@ export const profileService = {
    * Aggiorna il profilo utente (PUT /api/v1/profile)
    */
   async updateProfile(dto: UpdateProfileRequestDto): Promise<ProfileResponseDto> {
+    const targetUserId = dto.id || currentProfileState.id || 'trainer-1';
+    if (dto.avatar_url !== undefined) {
+      await setUserAvatar(targetUserId, dto.avatar_url);
+    }
+
     const res = await apiService.put<UserProfile>('/api/v1/profile', dto);
     if (res.success && res.data) {
-      currentProfileState = { ...res.data };
+      currentProfileState = {
+        ...res.data,
+        avatar_url: dto.avatar_url !== undefined ? dto.avatar_url : (res.data.avatar_url ?? null),
+      };
       await persistProfileState(currentProfileState);
       notifyListeners();
       return res;
@@ -274,11 +308,14 @@ export const profileService = {
   },
 
   /**
-   * Resetta il profilo ai valori di default
+   * Resetta il profilo ai valori di default e azzera l'avatar in memoria
    */
   async resetProfile(): Promise<void> {
-    currentProfileState = { ...INITIAL_PROFILE };
+    currentProfileState = { ...INITIAL_PROFILE, avatar_url: null };
     await persistProfileState(currentProfileState);
     notifyListeners();
   },
+
+  getUserAvatar,
+  setUserAvatar,
 };

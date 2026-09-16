@@ -6,6 +6,9 @@ export interface AuthUser {
   first_name: string;
   last_name: string;
   role: UserRole;
+  password?: string;
+  is_profile_completed?: boolean;
+  raw_otp?: string;
   email?: string;
   trainer_id?: string;
   trainer_name?: string;
@@ -30,6 +33,9 @@ export interface ProvisionedClient {
   first_name: string;
   last_name: string;
   otp: string;
+  raw_otp?: string;
+  password?: string;
+  is_profile_completed?: boolean;
   trainer_id: string;
   trainer_name: string;
   email?: string;

@@ -14,6 +14,7 @@ export interface ClientAssociation {
 
 export interface UserProfile {
   id?: string | number;
+  username?: string;
   first_name: string; // Nome
   last_name: string; // Cognome
   birth_date: string; // Formato DD-MM-YYYY
@@ -21,6 +22,9 @@ export interface UserProfile {
   avatar_url?: string | null; // URI o percorso locale / remote avatar
   role: UserRole; // Ruolo utente nel sistema RBAC
   email?: string;
+  password?: string;
+  is_profile_completed?: boolean;
+  raw_otp?: string;
   clients?: ClientAssociation[]; // Lista clienti associati (se Trainer)
   trainer_id?: string; // ID del Personal Trainer associato (se Client)
   trainer_name?: string; // Nome del Personal Trainer associato (se Client)
@@ -31,6 +35,7 @@ export interface UserProfile {
 // Request DTO per aggiornamento profilo (PUT /api/v1/profile)
 export interface UpdateProfileRequestDto {
   id?: string | number;
+  username?: string;
   email?: string;
   first_name: string;
   last_name: string;
@@ -38,6 +43,9 @@ export interface UpdateProfileRequestDto {
   height_cm: number;
   avatar_url?: string | null;
   role?: UserRole;
+  password?: string;
+  is_profile_completed?: boolean;
+  raw_otp?: string;
   clients?: ClientAssociation[];
   trainer_id?: string;
   trainer_name?: string;

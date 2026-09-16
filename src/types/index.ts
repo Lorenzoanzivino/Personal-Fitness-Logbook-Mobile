@@ -5,3 +5,4 @@ export * from './measurement';
 export * from './diet';
 export * from './navigation';
 export * from './auth';
+export * from './user';

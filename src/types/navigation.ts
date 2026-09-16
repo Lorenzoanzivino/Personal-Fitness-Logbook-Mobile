@@ -14,6 +14,7 @@ export type RootTabParamList = {
 
 export type RootStackParamList = {
   Login: undefined;
+  ClientOnboarding: undefined;
   MainTabs: NavigatorScreenParams<RootTabParamList>;
   WorkoutModal: { routineId?: number; routineName?: string; weekNumber?: number } | undefined;
   NewRoutineModal: { routineId?: number } | undefined;

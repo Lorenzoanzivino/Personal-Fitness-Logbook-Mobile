@@ -14,10 +14,16 @@ interface AuthContextType {
   login: (credentials: LoginCredentials) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   createClientAccount: (
-    username: string,
-    fullName?: string,
+    firstName: string,
+    lastName: string,
     notes?: string
   ) => Promise<{ success: boolean; otp?: string; error?: string }>;
+  completeClientOnboarding: (data: {
+    username?: string;
+    password: string;
+    birthDate?: string;
+    heightCm?: number;
+  }) => Promise<{ success: boolean; error?: string }>;
   archiveClient: (clientId: string) => Promise<void>;
   unarchiveClient: (clientId: string) => Promise<void>;
   hardDeleteClient: (clientId: string) => Promise<void>;
@@ -49,11 +55,16 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setProvisionedClients(clients);
 
       if (savedSession && savedSession.user && savedSession.token) {
-        setUser(savedSession.user);
+        const userAvatar = await profileService.getUserAvatar(savedSession.user.id);
+        const userWithAvatar = {
+          ...savedSession.user,
+          avatar_url: userAvatar,
+        };
+        setUser(userWithAvatar);
         setRole(savedSession.user.role);
         setToken(savedSession.token);
         setIsAuthenticated(true);
-        syncWithProfileService(savedSession.user);
+        syncWithProfileService(userWithAvatar);
       }
     } catch (e) {
       console.warn('Errore verifica sessione iniziale:', e);
@@ -64,14 +75,20 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const syncWithProfileService = async (authUser: AuthUser) => {
     try {
+      const userAvatar = await profileService.getUserAvatar(authUser.id);
       await profileService.updateProfile({
         id: authUser.id,
+        username: authUser.username,
         email: authUser.email,
         first_name: authUser.first_name,
         last_name: authUser.last_name,
         birth_date: authUser.birth_date || '01-01-1995',
         height_cm: authUser.height_cm || 175,
+        avatar_url: userAvatar,
         role: authUser.role,
+        password: authUser.password,
+        is_profile_completed: authUser.is_profile_completed,
+        raw_otp: authUser.raw_otp,
         trainer_id: authUser.trainer_id,
         trainer_name: authUser.trainer_name,
       });
@@ -88,11 +105,16 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     if (res.success && res.data) {
       const { user: loggedUser, token: loggedToken } = res.data;
-      setUser(loggedUser);
+      const userAvatar = await profileService.getUserAvatar(loggedUser.id);
+      const userWithAvatar = {
+        ...loggedUser,
+        avatar_url: userAvatar,
+      };
+      setUser(userWithAvatar);
       setRole(loggedUser.role);
       setToken(loggedToken);
       setIsAuthenticated(true);
-      await syncWithProfileService(loggedUser);
+      await syncWithProfileService(userWithAvatar);
       return { success: true };
     }
 
@@ -104,6 +126,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const logout = async (): Promise<void> => {
     await authService.clearSession();
+    await profileService.resetProfile();
     setUser(null);
     setRole(null);
     setToken(null);
@@ -116,11 +139,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const createClientAccount = async (
-    username: string,
-    fullName?: string,
+    firstName: string,
+    lastName: string,
     notes?: string
   ): Promise<{ success: boolean; otp?: string; error?: string }> => {
-    const res = await authService.provisionClientAccount(username, fullName, notes);
+    const res = await authService.provisionClientAccount(firstName, lastName, notes);
 
     if (res.success && res.data) {
       const { client, otp } = res.data;
@@ -129,7 +152,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       // Sincronizza anche nell'archivio clienti del profileService per retrocompatibilità
       await profileService.addClientToTrainer({
         id: client.id,
-        name: `${client.first_name} ${client.last_name}`,
+        name: `${client.first_name} ${client.last_name}`.trim(),
         email: client.email,
         linked_at: client.created_at,
         notes: client.notes,
@@ -142,6 +165,59 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       success: false,
       error: res.error?.message || 'Impossibile creare account cliente.',
     };
+  };
+
+  const completeClientOnboarding = async (data: {
+    username?: string;
+    password: string;
+    birthDate?: string;
+    heightCm?: number;
+  }): Promise<{ success: boolean; error?: string }> => {
+    if (!user?.id) {
+      return { success: false, error: 'Nessuna sessione attiva.' };
+    }
+    try {
+      const updatedClient = await authService.completeClientOnboarding(user.id, data);
+      if (!updatedClient) {
+        return { success: false, error: 'Impossibile aggiornare i dati del cliente.' };
+      }
+
+      const updatedUser: AuthUser = {
+        ...user,
+        username: data.username && data.username.trim() ? data.username.trim() : user.username,
+        password: data.password.trim(),
+        birth_date: data.birthDate && data.birthDate.trim() ? data.birthDate.trim() : user.birth_date,
+        height_cm: data.heightCm ? data.heightCm : user.height_cm,
+        is_profile_completed: true,
+      };
+
+      if (token) {
+        await authService.saveSession({ user: updatedUser, token });
+      }
+      setUser(updatedUser);
+
+      // Sincronizza anche il profileService
+      await profileService.updateProfile({
+        id: updatedUser.id,
+        username: updatedUser.username,
+        first_name: updatedUser.first_name,
+        last_name: updatedUser.last_name,
+        birth_date: updatedUser.birth_date || '01-01-1998',
+        height_cm: updatedUser.height_cm || 170,
+        password: updatedUser.password,
+        is_profile_completed: true,
+        trainer_id: updatedUser.trainer_id,
+        trainer_name: updatedUser.trainer_name,
+      });
+
+      await refreshProvisionedClients();
+      return { success: true };
+    } catch (e: any) {
+      return {
+        success: false,
+        error: e?.message || 'Errore durante il completamento dell\'onboarding.',
+      };
+    }
   };
 
   const archiveClient = async (clientId: string): Promise<void> => {
@@ -180,6 +256,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         login,
         logout,
         createClientAccount,
+        completeClientOnboarding,
         archiveClient,
         unarchiveClient,
         hardDeleteClient,

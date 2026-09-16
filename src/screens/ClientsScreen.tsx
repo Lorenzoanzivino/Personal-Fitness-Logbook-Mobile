@@ -40,9 +40,9 @@ export const ClientsScreen: React.FC = () => {
   const [showArchived, setShowArchived] = useState(false);
 
   // New Client Form State
-  const [newClientUsername, setNewClientUsername] = useState('');
-  const [newClientFullName, setNewClientFullName] = useState('');
-  const [newClientNotes, setNewClientNotes] = useState('');
+  const [newClientFirstName, setNewClientFirstName] = useState('');
+  const [newClientLastName, setNewClientLastName] = useState('');
+  const [newClientGoals, setNewClientGoals] = useState('');
   const [isCreatingClient, setIsCreatingClient] = useState(false);
   const [provisionSuccess, setProvisionSuccess] = useState<{
     username: string;
@@ -123,9 +123,14 @@ export const ClientsScreen: React.FC = () => {
 
   // Create client account
   const handleCreateClient = async () => {
-    const cleanUsername = newClientUsername.trim();
-    if (!cleanUsername) {
-      showToast('error', 'Lo Username dell\'atleta è obbligatorio.');
+    const cleanFirstName = newClientFirstName.trim();
+    const cleanLastName = newClientLastName.trim();
+    if (!cleanFirstName) {
+      showToast('error', 'Il Nome dell\'atleta è obbligatorio.');
+      return;
+    }
+    if (!cleanLastName) {
+      showToast('error', 'Il Cognome dell\'atleta è obbligatorio.');
       return;
     }
 
@@ -133,17 +138,17 @@ export const ClientsScreen: React.FC = () => {
     setProvisionSuccess(null);
     try {
       const res = await createClientAccount(
-        cleanUsername,
-        newClientFullName.trim() || undefined,
-        newClientNotes.trim() || undefined
+        cleanFirstName,
+        cleanLastName,
+        newClientGoals.trim() || undefined
       );
 
       if (res.success && res.otp) {
-        setProvisionSuccess({ username: cleanUsername, otp: res.otp });
-        setNewClientUsername('');
-        setNewClientFullName('');
-        setNewClientNotes('');
-        showToast('success', `Account @${cleanUsername} creato con successo!`);
+        setProvisionSuccess({ username: cleanFirstName, otp: res.otp });
+        setNewClientFirstName('');
+        setNewClientLastName('');
+        setNewClientGoals('');
+        showToast('success', `Account per ${cleanFirstName} ${cleanLastName} creato con successo!`);
       } else {
         showToast('error', res.error || 'Errore durante la creazione dell\'account.');
       }
@@ -279,41 +284,42 @@ export const ClientsScreen: React.FC = () => {
           </View>
 
           <Text style={styles.sectionDesc}>
-            Inserisci i dati dell'atleta. Verrà generato un codice OTP che l'atleta userà per accedere.
+            Inserisci Nome e Cognome dell'atleta. Verrà generato un codice OTP che l'atleta userà per accedere.
           </Text>
 
           <View style={styles.formContainer}>
             <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>USERNAME ATLETA *</Text>
+              <Text style={styles.inputLabel}>NOME ATLETA *</Text>
               <TextInput
                 style={styles.textInput}
-                value={newClientUsername}
-                onChangeText={setNewClientUsername}
+                value={newClientFirstName}
+                onChangeText={setNewClientFirstName}
                 placeholder="es. Mario"
                 placeholderTextColor={colors.textMuted}
-                autoCapitalize="none"
+                autoCapitalize="words"
                 autoCorrect={false}
               />
             </View>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>NOME E COGNOME (Opzionale)</Text>
+              <Text style={styles.inputLabel}>COGNOME ATLETA *</Text>
               <TextInput
                 style={styles.textInput}
-                value={newClientFullName}
-                onChangeText={setNewClientFullName}
-                placeholder="es. Mario Rossi"
+                value={newClientLastName}
+                onChangeText={setNewClientLastName}
+                placeholder="es. Rossi"
                 placeholderTextColor={colors.textMuted}
                 autoCapitalize="words"
+                autoCorrect={false}
               />
             </View>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>OBIETTIVO / NOTE (Opzionale)</Text>
+              <Text style={styles.inputLabel}>OBIETTIVI / NOTE (Opzionale)</Text>
               <TextInput
                 style={styles.textInput}
-                value={newClientNotes}
-                onChangeText={setNewClientNotes}
+                value={newClientGoals}
+                onChangeText={setNewClientGoals}
                 placeholder="es. Ipertrofia 4x/settimana • Recupero spalla"
                 placeholderTextColor={colors.textMuted}
               />
@@ -349,8 +355,8 @@ export const ClientsScreen: React.FC = () => {
               </Text>
               <View style={styles.credRow}>
                 <View style={styles.credItem}>
-                  <Text style={styles.credLabel}>USERNAME:</Text>
-                  <Text style={styles.credValue}>@{provisionSuccess.username}</Text>
+                  <Text style={styles.credLabel}>IDENTIFICATIVO / NOME:</Text>
+                  <Text style={styles.credValue}>{provisionSuccess.username}</Text>
                 </View>
                 <View style={styles.credItem}>
                   <Text style={styles.credLabel}>PASSWORD / OTP:</Text>
@@ -592,7 +598,7 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     padding: layout.cardPadding,
-    paddingBottom: 110,
+    paddingBottom: 100,
   },
   header: {
     marginBottom: spacing.md,

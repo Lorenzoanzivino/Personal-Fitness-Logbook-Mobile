@@ -3,7 +3,7 @@ import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../types/navigation';
 import { BottomTabNavigator } from './BottomTabNavigator';
-import { LoginScreen } from '../screens/auth';
+import { LoginScreen, ClientOnboardingScreen } from '../screens/auth';
 import { useAuth } from '../context/AuthContext';
 import { colors } from '../theme/colors';
 import {
@@ -17,7 +17,7 @@ import {
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export const RootStackNavigator: React.FC = () => {
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, user, loading } = useAuth();
 
   if (loading) {
     return (
@@ -27,6 +27,9 @@ export const RootStackNavigator: React.FC = () => {
     );
   }
 
+  const isClientOnboardingRequired =
+    isAuthenticated && user?.role === 'CLIENT' && user?.is_profile_completed === false;
+
   return (
     <Stack.Navigator
       screenOptions={{
@@ -35,6 +38,8 @@ export const RootStackNavigator: React.FC = () => {
     >
       {!isAuthenticated ? (
         <Stack.Screen name="Login" component={LoginScreen} />
+      ) : isClientOnboardingRequired ? (
+        <Stack.Screen name="ClientOnboarding" component={ClientOnboardingScreen} />
       ) : (
         <>
           <Stack.Screen name="MainTabs" component={BottomTabNavigator} />

@@ -4,3 +4,4 @@ export * from './MeasurementModal';
 export * from './UploadDietModal';
 export * from './PdfViewerModal';
 export * from './ExerciseModal';
+export * from './NewClientModal';

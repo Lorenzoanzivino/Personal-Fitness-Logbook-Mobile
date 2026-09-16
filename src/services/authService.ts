@@ -111,14 +111,28 @@ class AuthService {
       return { success: true, data: session, error: null };
     }
 
-    // B. Verifica Credenziali CLIENTE (Username + OTP)
+    // B. Verifica Credenziali CLIENTE (Identificativo + Password / OTP Perpetuo)
     const provisionedList = await this.getProvisionedClients();
-    const matchedClient = provisionedList.find(
-      (c) =>
-        !c.isArchived &&
-        c.username.toLowerCase() === cleanUsername.toLowerCase() &&
-        c.otp.toUpperCase() === cleanPasswordOrOtp.toUpperCase()
-    );
+    const matchingClients = provisionedList.filter((c) => {
+      if (c.isArchived) return false;
+      const target = cleanUsername.toLowerCase();
+      const usernameMatch = Boolean(c.username && c.username.toLowerCase() === target);
+      const firstNameMatch = Boolean(c.first_name && c.first_name.toLowerCase() === target);
+      const fullNameMatch = Boolean(`${c.first_name} ${c.last_name}`.trim().toLowerCase() === target);
+      const emailMatch = Boolean(c.email && c.email.toLowerCase() === target);
+      return usernameMatch || firstNameMatch || fullNameMatch || emailMatch;
+    });
+
+    const matchedClient = matchingClients.find((c) => {
+      const inputPassOrOtp = cleanPasswordOrOtp.trim();
+      const rawOtp = (c.raw_otp || c.otp || '').trim();
+      const storedPassword = (c.password || '').trim();
+
+      const isOtpMatch = rawOtp.length > 0 && inputPassOrOtp.toUpperCase() === rawOtp.toUpperCase();
+      const isPasswordMatch = storedPassword.length > 0 && inputPassOrOtp === storedPassword;
+
+      return isOtpMatch || isPasswordMatch;
+    });
 
     if (matchedClient) {
       const clientUser: AuthUser = {
@@ -128,6 +142,9 @@ class AuthService {
         last_name: matchedClient.last_name,
         role: 'CLIENT',
         email: matchedClient.email,
+        password: matchedClient.password,
+        is_profile_completed: matchedClient.is_profile_completed ?? false,
+        raw_otp: matchedClient.raw_otp || matchedClient.otp,
         trainer_id: matchedClient.trainer_id,
         trainer_name: matchedClient.trainer_name,
         height_cm: 168,
@@ -149,45 +166,54 @@ class AuthService {
       error: {
         code: 'AUTH_FAILED',
         message:
-          'Credenziali non valide. Per i clienti inserire lo Username e il codice OTP fornito dal Trainer.',
+          'Credenziali non valide. Inserisci lo Username/Nome e la tua Password o il codice OTP fornito dal Trainer.',
       },
     };
   }
 
   /**
-   * Crea un nuovo account cliente da parte del Trainer e genera il codice OTP (Password)
-   * Supporta infiniti clienti con lo stesso nome grazie agli identificatori univoci UUID.
+   * Crea un nuovo account cliente da parte del Trainer e genera il codice OTP (Password iniziale)
+   * Richiede Nome e Cognome obbligatori, genera l'username dal Nome e imposta is_profile_completed = false.
    */
   async provisionClientAccount(
-    username: string,
-    fullName?: string,
+    firstName: string,
+    lastName: string,
     notes?: string
   ): Promise<ApiResponse<{ client: ProvisionedClient; otp: string }>> {
-    const cleanUsername = username.trim();
-    if (!cleanUsername) {
+    const cleanFirstName = firstName.trim();
+    const cleanLastName = (lastName || '').trim();
+    if (!cleanFirstName) {
       return {
         success: false,
         data: null,
-        error: { code: 'INVALID_USERNAME', message: 'Lo Username cliente è obbligatorio.' },
+        error: { code: 'INVALID_NAME', message: 'Il Nome dell\'atleta è obbligatorio.' },
+      };
+    }
+    if (!cleanLastName) {
+      return {
+        success: false,
+        data: null,
+        error: { code: 'INVALID_LASTNAME', message: 'Il Cognome dell\'atleta è obbligatorio.' },
       };
     }
 
     const currentClients = await this.getProvisionedClients();
     const generatedOtp = this.generateOtp();
     const clientId = generateUUID();
-    const nameParts = (fullName || cleanUsername).trim().split(' ');
-    const firstName = nameParts[0] || cleanUsername;
-    const lastName = nameParts.slice(1).join(' ') || '';
+    const generatedUsername = cleanFirstName;
 
     const newClient: ProvisionedClient = {
       id: clientId,
-      username: cleanUsername,
-      first_name: firstName,
-      last_name: lastName,
+      username: generatedUsername,
+      first_name: cleanFirstName,
+      last_name: cleanLastName,
       otp: generatedOtp,
+      raw_otp: generatedOtp,
+      password: '',
+      is_profile_completed: false,
       trainer_id: TRAINER_ADMIN.user.id,
       trainer_name: `${TRAINER_ADMIN.user.first_name} ${TRAINER_ADMIN.user.last_name}`,
-      email: `${cleanUsername.toLowerCase()}@fitnesslogbook.local`,
+      email: `${cleanFirstName.toLowerCase()}@fitnesslogbook.local`,
       notes: notes?.trim() || 'Account cliente creato dal Trainer',
       created_at: new Date().toISOString(),
       isArchived: false,
@@ -204,6 +230,50 @@ class AuthService {
       },
       error: null,
     };
+  }
+
+  /**
+   * Aggiorna la password del cliente e imposta is_profile_completed a true
+   */
+  async updateClientPassword(
+    clientId: string,
+    newPassword: string
+  ): Promise<boolean> {
+    const clients = await this.getProvisionedClients();
+    const idx = clients.findIndex((c) => c.id === clientId);
+    if (idx === -1) return false;
+    clients[idx].password = newPassword;
+    clients[idx].is_profile_completed = true;
+    await this.saveProvisionedClients(clients);
+    return true;
+  }
+
+  /**
+   * Completa l'onboarding del cliente: imposta la password, l'eventuale username personalizzato,
+   * data di nascita e altezza, e contrassegna is_profile_completed = true.
+   */
+  async completeClientOnboarding(
+    clientId: string,
+    data: {
+      username?: string;
+      password: string;
+      birthDate?: string;
+      heightCm?: number;
+    }
+  ): Promise<ProvisionedClient | null> {
+    const clients = await this.getProvisionedClients();
+    const idx = clients.findIndex((c) => c.id === clientId);
+    if (idx === -1) return null;
+
+    const target = clients[idx];
+    target.password = data.password.trim();
+    if (data.username && data.username.trim()) {
+      target.username = data.username.trim();
+    }
+    target.is_profile_completed = true;
+
+    await this.saveProvisionedClients(clients);
+    return target;
   }
 
   /**

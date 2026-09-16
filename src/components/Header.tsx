@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Pressable, Modal, ScrollView, Image } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Modal, ScrollView, Image, Alert } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 import { layout } from '../theme/spacing';
 import { getActiveRouteName, navigateSafely } from '../navigation/navigationRef';
+import { useAuth } from '../context/AuthContext';
 
 const APP_LOGO = require('../../assets/logo1.png');
 
@@ -168,6 +170,7 @@ export const Header: React.FC<HeaderProps> = ({
   connected = true,
   activeRouteName: routeProp,
 }) => {
+  const { logout } = useAuth();
   const [helpVisible, setHelpVisible] = useState(false);
   const [currentRoute, setCurrentRoute] = useState<string>(routeProp || 'Home');
 
@@ -179,6 +182,27 @@ export const Header: React.FC<HeaderProps> = ({
       setCurrentRoute('Home');
     }
     setHelpVisible(true);
+  };
+
+  const handleLogout = () => {
+    Alert.alert(
+      'Disconnessione',
+      'Sei sicuro di voler effettuare il logout dall\'applicazione?',
+      [
+        { text: 'Annulla', style: 'cancel' },
+        {
+          text: 'Disconnetti',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await logout();
+            } catch (err) {
+              console.warn('Errore durante il logout:', err);
+            }
+          },
+        },
+      ]
+    );
   };
 
   const guide = SCREEN_HELP_DATA[currentRoute] || DEFAULT_HELP;
@@ -234,6 +258,18 @@ export const Header: React.FC<HeaderProps> = ({
           accessibilityLabel="Guida e informazioni sulla schermata"
         >
           <Text style={styles.helpIconText}>ℹ</Text>
+        </Pressable>
+
+        <Pressable
+          onPress={handleLogout}
+          style={({ pressed }) => [
+            styles.logoutIconBtn,
+            { opacity: pressed ? 0.7 : 1 },
+          ]}
+          accessibilityRole="button"
+          accessibilityLabel="Disconnetti account"
+        >
+          <Ionicons name="log-out-outline" size={17} color={colors.danger} />
         </Pressable>
       </View>
 
@@ -398,6 +434,16 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: colors.accent,
     fontWeight: '800',
+  },
+  logoutIconBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: colors.backgroundSubtle,
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.3)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   helpOverlay: {
     flex: 1,

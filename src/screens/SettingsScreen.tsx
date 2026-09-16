@@ -630,8 +630,8 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   contentContainer: {
-    padding: 16,
-    paddingBottom: 96,
+    padding: 14,
+    paddingBottom: 100,
   },
   header: {
     marginBottom: 16,

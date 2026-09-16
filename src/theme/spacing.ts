@@ -15,5 +15,5 @@ export const layout = {
   borderRadiusLg: 16,
   borderRadiusPill: 9999,
   bottomBarHeight: 64,
-  cardPadding: 16,
+  cardPadding: 14,
 } as const;

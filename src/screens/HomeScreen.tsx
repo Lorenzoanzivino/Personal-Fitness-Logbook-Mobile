@@ -3,13 +3,13 @@ import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { TabNavigationProp } from '../types/navigation';
 import { colors } from '../theme/colors';
-import { layout } from '../theme/spacing';
 import { typography } from '../theme/typography';
 import { Card } from '../components/Card';
 import { Avatar } from '../components/Avatar';
 import { WeightTrendChart } from '../components/WeightTrendChart';
 import { ScreenBackgroundWrapper } from '../components/ScreenBackgroundWrapper';
 import { profileService } from '../services/profileService';
+import { useAuth } from '../context/AuthContext';
 import { useGym } from '../context/GymContext';
 import { useMeasurements } from '../context/MeasurementContext';
 import { useDiet } from '../context/DietContext';
@@ -17,7 +17,8 @@ import { UserProfile } from '../types/profile';
 
 export const HomeScreen: React.FC = () => {
   const navigation = useNavigation<TabNavigationProp<'Home'>>();
-  const { workouts, routines, calculateTotalVolume } = useGym();
+  const { user } = useAuth();
+  const { workouts, calculateTotalVolume } = useGym();
   const { measurements, latestMeasurement } = useMeasurements();
   const { activeDiet } = useDiet();
 
@@ -29,6 +30,8 @@ export const HomeScreen: React.FC = () => {
     });
     return () => unsubscribe();
   }, []);
+
+  const displayName = user?.username || profile.username || profile.first_name || 'Atleta';
 
   // Calculate Real 7-day stats from Gym workouts
   const sevenDaysAgo = new Date();
@@ -45,9 +48,6 @@ export const HomeScreen: React.FC = () => {
 
   const volume7dTon = (volume7dKg / 1000).toFixed(1);
 
-  // Suggested Routine for quick launch
-  const suggestedRoutine = routines[0];
-
   return (
     <ScreenBackgroundWrapper>
       <ScrollView
@@ -61,7 +61,7 @@ export const HomeScreen: React.FC = () => {
           <View style={{ flex: 1, marginRight: 12 }}>
             <Text style={typography.caption}>BENVENUTO NEL TUO LOGBOOK</Text>
             <Text style={typography.h1}>
-              Ciao, {profile.first_name || 'Atleta'} 👋
+              Ciao, {displayName} 👋
             </Text>
             <Text style={[typography.caption, { color: colors.textSecondary, marginTop: 2 }]}>
               Dashboard e andamento prestazioni in tempo reale.
@@ -244,39 +244,6 @@ export const HomeScreen: React.FC = () => {
         measurements={measurements}
         onAddPress={() => navigation.navigate('MeasurementModal')}
       />
-
-      {/* Live Logger Quick Action Banner */}
-      <Card highlighted style={styles.actionCard}>
-        <View style={styles.actionCardHeader}>
-          <View style={{ flex: 1 }}>
-            <Text style={typography.h2}>Sessione Programmata</Text>
-            <Text style={typography.caption}>
-              {suggestedRoutine ? suggestedRoutine.name : 'Allenamento del Giorno'}
-            </Text>
-          </View>
-          <View style={styles.overloadBadge}>
-            <Text style={styles.overloadBadgeText}>OVERLOAD</Text>
-          </View>
-        </View>
-
-        <Pressable
-          onPress={() =>
-            navigation.navigate('WorkoutModal', {
-              routineId: suggestedRoutine?.id,
-              routineName: suggestedRoutine?.name || 'Spinta & Petto Focus',
-              weekNumber: 3,
-            })
-          }
-          style={({ pressed }) => [
-            styles.primaryButton,
-            { opacity: pressed ? 0.85 : 1 },
-          ]}
-          accessibilityRole="button"
-          accessibilityLabel="Avvia Allenamento Live"
-        >
-          <Text style={styles.primaryButtonText}>▶ AVVIA LIVE LOGGER PALESTRA</Text>
-        </Pressable>
-      </Card>
     </ScrollView>
     </ScreenBackgroundWrapper>
   );
@@ -288,8 +255,8 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   contentContainer: {
-    padding: 16,
-    paddingBottom: 96,
+    padding: 14,
+    paddingBottom: 100,
   },
   heroSection: {
     marginBottom: 16,
@@ -310,7 +277,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   kpiCard: {
-    padding: 12,
+    padding: 10,
   },
   kpiTopRow: {
     flexDirection: 'row',
@@ -350,46 +317,5 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '700',
     color: colors.textSecondary,
-  },
-  actionCard: {
-    marginTop: 4,
-    marginBottom: 16,
-    padding: 16,
-  },
-  actionCardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 14,
-  },
-  overloadBadge: {
-    backgroundColor: colors.accentMuted,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: layout.borderRadiusSm,
-  },
-  overloadBadgeText: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: colors.accent,
-    letterSpacing: 0.5,
-  },
-  primaryButton: {
-    backgroundColor: colors.accent,
-    borderRadius: layout.borderRadiusMd,
-    paddingVertical: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: colors.accent,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  primaryButtonText: {
-    color: colors.white,
-    fontSize: 13,
-    fontWeight: '800',
-    letterSpacing: 0.5,
   },
 });

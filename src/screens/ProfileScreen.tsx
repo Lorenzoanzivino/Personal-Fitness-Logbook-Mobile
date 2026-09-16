@@ -17,6 +17,7 @@ import { Avatar } from '../components/Avatar';
 import { CustomConfirmModal } from '../components/CustomConfirmModal';
 import { ScreenBackgroundWrapper } from '../components/ScreenBackgroundWrapper';
 import { profileService } from '../services/profileService';
+import { TRAINER_CONFIG } from '../services/config';
 import { UserProfile, UserRole } from '../types/profile';
 import { useAuth } from '../context/AuthContext';
 
@@ -63,7 +64,7 @@ export const ProfileScreen: React.FC = () => {
       setProfile(p);
     });
     return () => unsub();
-  }, []);
+  }, [user?.id]);
 
   // Auto-dismiss overlay feedback banner after 2.5s
   useEffect(() => {
@@ -78,10 +79,16 @@ export const ProfileScreen: React.FC = () => {
     setLoading(true);
     setFeedback(null);
     try {
+      const activeUserId = String(user?.id || profile.id || 'trainer-1');
+      const userAvatar = await profileService.getUserAvatar(activeUserId);
       const res = await profileService.getProfile();
       if (res.success && res.data) {
-        setProfile(res.data);
-        populateForm(res.data);
+        const combined: UserProfile = {
+          ...res.data,
+          avatar_url: userAvatar !== null ? userAvatar : res.data.avatar_url,
+        };
+        setProfile(combined);
+        populateForm(combined);
       } else {
         setFeedback({
           type: 'error',
@@ -158,15 +165,23 @@ export const ProfileScreen: React.FC = () => {
     setFeedback(null);
 
     const numHeight = parseFloat(heightCm);
+    const activeUserId = String(user?.id || profile?.id || 'trainer-1');
 
     try {
+      if (avatarUri !== undefined) {
+        await profileService.setUserAvatar(activeUserId, avatarUri);
+      }
       const res = await profileService.updateProfile({
+        id: activeUserId,
+        username: user?.username || profile?.username,
         first_name: firstName.trim(),
         last_name: lastName.trim(),
         birth_date: birthDate.trim(),
         height_cm: numHeight,
         avatar_url: avatarUri,
         role: currentRole,
+        trainer_id: user?.trainer_id || profile?.trainer_id,
+        trainer_name: user?.trainer_name || profile?.trainer_name,
       });
 
       if (res.success && res.data) {
@@ -196,9 +211,12 @@ export const ProfileScreen: React.FC = () => {
     setAvatarUri(newUri);
     setSaving(true);
     setFeedback(null);
+    const activeUserId = String(user?.id || profile?.id || 'trainer-1');
     try {
+      await profileService.setUserAvatar(activeUserId, newUri);
       const numHeight = parseFloat(heightCm) || profile?.height_cm || 175;
       const res = await profileService.updateProfile({
+        id: activeUserId,
         first_name: firstName.trim() || profile?.first_name || 'Utente',
         last_name: lastName.trim() || profile?.last_name || '',
         birth_date: birthDate.trim() || profile?.birth_date || '01-01-2000',
@@ -245,6 +263,14 @@ export const ProfileScreen: React.FC = () => {
 
   const fullName = `${firstName.trim()} ${lastName.trim()}`.trim() || 'Atleta';
 
+  const assignedTrainerName =
+    user?.trainer_name ||
+    profile.trainer_name ||
+    `${TRAINER_CONFIG.firstName} ${TRAINER_CONFIG.lastName}`;
+
+  const realFullName =
+    `${(user?.first_name || profile.first_name || firstName || '').trim()} ${(user?.last_name || profile.last_name || lastName || '').trim()}`.trim() || 'Atleta';
+
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -280,39 +306,70 @@ export const ProfileScreen: React.FC = () => {
         {/* ========================================================= */}
         {/* SEZIONE 1: RUOLO BLOCCATO (AUTHENTICATED RBAC)           */}
         {/* ========================================================= */}
-        <Card style={styles.roleCard}>
-          <View style={styles.roleHeaderRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={typography.caption}>AUTENTICAZIONE & RUOLO ATTIVO</Text>
-              <Text style={typography.h3}>Accesso Verificato</Text>
+        {currentRole === 'CLIENT' ? (
+          <Card style={styles.clientBannerCard}>
+            <View style={styles.roleHeaderRow}>
+              <View style={{ flex: 1, marginRight: 8 }}>
+                <Text style={typography.caption}>AUTENTICAZIONE E RUOLO</Text>
+                <Text style={styles.clientRealName}>{realFullName}</Text>
+              </View>
+              <View style={styles.verifiedBadge}>
+                <Text style={styles.verifiedBadgeText}>✓ Accesso Verificato</Text>
+              </View>
             </View>
-            <View
-              style={[
-                styles.roleBadge,
-                currentRole === 'TRAINER' ? styles.roleBadgeTrainer : styles.roleBadgeClient,
-              ]}
-            >
-              <Text style={styles.roleBadgeText}>
-                {currentRole === 'TRAINER' ? '🏋️ PERSONAL TRAINER (Admin)' : '🏃 ATLETA / CLIENTE'}
+
+            <View style={styles.trainerAssignedBox}>
+              <Text style={styles.trainerLabel}>
+                Trainer: <Text style={styles.trainerNameHighlight}>{assignedTrainerName}</Text>
               </Text>
             </View>
-          </View>
 
-          <Text style={styles.roleExplanation}>
-            {currentRole === 'TRAINER'
-              ? `Accesso Master confermato per @${user?.username || 'trainer'}. Creazione schede autonome e in delega per gli atleti, registrazione clienti e gestione catalogo.`
-              : `Accesso Atleta confermato per @${user?.username || 'Cliente'}. Schede sincronizzate e Live Logger protetto. I permessi di configurazione sono gestiti dal tuo Personal Trainer.`}
-          </Text>
-
-          <View style={styles.accountMetaRow}>
-            <Text style={styles.accountMetaText}>
-              Account attivo: <Text style={{ fontWeight: '700', color: colors.text }}>@{user?.username || (currentRole === 'TRAINER' ? 'trainer' : 'Cliente')}</Text>
+            <Text style={styles.roleExplanation}>
+              Accesso Atleta confermato per @{user?.username || profile.username || 'Cliente'}. Schede di allenamento e dati biometrici sincronizzati.
             </Text>
-            <View style={styles.statusPill}>
-              <Text style={styles.statusPillText}>● Sessione Autenticata</Text>
+
+            <View style={styles.accountMetaRow}>
+              <Text style={styles.accountMetaText}>
+                Username: <Text style={{ fontWeight: '700', color: colors.text }}>@{user?.username || profile.username || 'Cliente'}</Text>
+              </Text>
+              <View style={styles.statusPill}>
+                <Text style={styles.statusPillText}>● Sessione Attiva</Text>
+              </View>
             </View>
-          </View>
-        </Card>
+          </Card>
+        ) : (
+          <Card style={styles.roleCard}>
+            <View style={styles.roleHeaderRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={typography.caption}>AUTENTICAZIONE & RUOLO ATTIVO</Text>
+                <Text style={typography.h3}>Accesso Verificato</Text>
+              </View>
+              <View
+                style={[
+                  styles.roleBadge,
+                  styles.roleBadgeTrainer,
+                ]}
+              >
+                <Text style={styles.roleBadgeText}>
+                  🏋️ PERSONAL TRAINER (Admin)
+                </Text>
+              </View>
+            </View>
+
+            <Text style={styles.roleExplanation}>
+              Accesso Master confermato per @{user?.username || 'trainer'}. Creazione schede autonome e in delega per gli atleti, registrazione clienti e gestione catalogo.
+            </Text>
+
+            <View style={styles.accountMetaRow}>
+              <Text style={styles.accountMetaText}>
+                Account attivo: <Text style={{ fontWeight: '700', color: colors.text }}>@{user?.username || 'trainer'}</Text>
+              </Text>
+              <View style={styles.statusPill}>
+                <Text style={styles.statusPillText}>● Sessione Autenticata</Text>
+              </View>
+            </View>
+          </Card>
+        )}
 
         {/* ========================================================= */}
         {/* SEZIONE 2: DATI ANAGRAFICI & BIOMETRICI                   */}
@@ -533,8 +590,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   contentContainer: {
-    padding: 16,
-    paddingBottom: 96,
+    padding: 14,
+    paddingBottom: 100,
   },
   header: {
     marginBottom: 8,
@@ -621,6 +678,52 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.textSecondary,
     fontWeight: '700',
+  },
+
+  // Client Verified Banner
+  clientBannerCard: {
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.4)',
+    backgroundColor: colors.surface,
+  },
+  clientRealName: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: colors.text,
+    marginTop: 2,
+    letterSpacing: 0.3,
+  },
+  verifiedBadge: {
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    borderColor: colors.emerald,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+  },
+  verifiedBadgeText: {
+    color: colors.emerald,
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  trainerAssignedBox: {
+    backgroundColor: colors.backgroundElevated,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginVertical: 10,
+    borderLeftWidth: 3,
+    borderLeftColor: colors.accent,
+  },
+  trainerLabel: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    fontWeight: '600',
+  },
+  trainerNameHighlight: {
+    color: colors.accent,
+    fontWeight: '800',
   },
 
   // Role Card

@@ -25,20 +25,25 @@ const customDarkTheme = {
 };
 
 function AppContent() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
+  const isClientOnboardingRequired =
+    isAuthenticated && user?.role === 'CLIENT' && user?.is_profile_completed === false;
 
   return (
     <SafeAreaView
       style={[
         styles.safeArea,
-        { backgroundColor: isAuthenticated ? colors.primary : '#000000' },
+        {
+          backgroundColor:
+            isAuthenticated && !isClientOnboardingRequired ? colors.primary : '#000000',
+        },
       ]}
       edges={['top']}
     >
       <StatusBar style="light" />
       <View style={styles.container}>
         <NavigationContainer ref={navigationRef} theme={customDarkTheme}>
-          {isAuthenticated && <Header />}
+          {isAuthenticated && !isClientOnboardingRequired && <Header />}
           <RootStackNavigator />
         </NavigationContainer>
       </View>
