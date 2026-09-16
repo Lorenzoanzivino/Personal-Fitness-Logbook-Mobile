@@ -7,6 +7,7 @@ import {
   Pressable,
   Linking,
   Modal,
+  Platform,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { TabNavigationProp } from '../types/navigation';
@@ -20,6 +21,8 @@ import { CustomConfirmModal } from '../components/CustomConfirmModal';
 import { ToastFeedback, ToastType } from '../components/ToastFeedback';
 import { ScreenBackgroundWrapper } from '../components/ScreenBackgroundWrapper';
 import * as Sharing from 'expo-sharing';
+import * as IntentLauncher from 'expo-intent-launcher';
+import * as FileSystem from 'expo-file-system/legacy';
 
 export const DietScreen: React.FC = () => {
   const navigation = useNavigation<TabNavigationProp<'Diet'>>();
@@ -69,21 +72,37 @@ export const DietScreen: React.FC = () => {
       return;
     }
     try {
-      const isAvailable = await Sharing.isAvailableAsync();
-      if (!isAvailable) {
+      if (Platform.OS === 'android') {
+        const contentUri = await FileSystem.getContentUriAsync(diet.file_path);
+        await IntentLauncher.startActivityAsync('android.intent.action.VIEW', {
+          data: contentUri,
+          flags: 1, // FLAG_GRANT_READ_URI_PERMISSION
+          type: 'application/pdf',
+        });
+      } else if (Platform.OS === 'ios') {
         await Linking.openURL(diet.file_path);
-        return;
+      } else {
+        if (typeof window !== 'undefined') {
+          window.open(diet.file_path, '_blank');
+        } else {
+          await Linking.openURL(diet.file_path);
+        }
       }
-      await Sharing.shareAsync(diet.file_path, {
-        mimeType: 'application/pdf',
-        dialogTitle: diet.name || 'Apri Piano Dieta PDF',
-        UTI: 'com.adobe.pdf',
-      });
     } catch (err) {
-      console.warn('Errore apertura PDF tramite Sharing:', err);
+      console.warn('Errore apertura diretta PDF:', err);
       try {
+        const isAvailable = await Sharing.isAvailableAsync();
+        if (isAvailable) {
+          await Sharing.shareAsync(diet.file_path, {
+            mimeType: 'application/pdf',
+            dialogTitle: diet.name || 'Apri Piano Dieta PDF',
+            UTI: 'com.adobe.pdf',
+          });
+          return;
+        }
         await Linking.openURL(diet.file_path);
-      } catch {
+      } catch (fallbackErr) {
+        console.warn('Errore fallback apertura PDF:', fallbackErr);
         setToast({
           visible: true,
           type: 'error',

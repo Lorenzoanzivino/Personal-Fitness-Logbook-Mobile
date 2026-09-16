@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "MY TRAIN UP",
+    "name": "MyTrainUp",
     "slug": "Personal-Fitness-Logbook-Mobile",
-    "displayName": "MY TRAIN UP",
+    "displayName": "MyTrainUp",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/logo1.png",
@@ -14,10 +14,8 @@
       "package": "com.mytrainup.app",
       "usesCleartextTraffic": true,
       "adaptiveIcon": {
-        "backgroundColor": "#0F172A",
         "foregroundImage": "./assets/logo1.png",
-        "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
+        "backgroundColor": "#E9570E"
       }
     },
     "web": {
@@ -31,6 +29,11 @@
     "plugins": [
       "expo-audio",
       "expo-sharing"
-    ]
+    ],
+    "splash": {
+      "image": null,
+      "backgroundColor": "#0F172A",
+      "resizeMode": "contain"
+    }
   }
 }
