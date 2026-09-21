@@ -1,53 +1,89 @@
-# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
-
-# dependencies
+# ==========================================
+# DEPENDENCIES & PACKAGE MANAGERS
+# ==========================================
 node_modules/
+package-lock.json.bak
+yarn.lock.bak
+.pnp
+.pnp.js
 
-# Expo
+# ==========================================
+# ENVIRONMENT VARIABLES & CREDENTIALS (CRITICAL)
+# ==========================================
+.env
+.env.*
+!.env.example
+!.env.production.example
+!backend/.env.example
+*.env
+*.env.*
+*.bak
+*.backup
+
+# ==========================================
+# BUILD OUTPUTS & NATIVE GENERATED FOLDERS
+# ==========================================
 .expo/
 dist/
 web-build/
-expo-env.d.ts
-
-# Native
+backend/dist/
+build/
+bin/
+/ios
+/android
 .kotlin/
-*.orig.*
+expo-env.d.ts
+*.tsbuildinfo
+
+# ==========================================
+# SECRETS, CERTIFICATES & KEYSTORES
+# ==========================================
 *.jks
+*.keystore
 *.p8
 *.p12
 *.key
+*.pem
 *.mobileprovision
+*.orig.*
 
-# Metro
-.metro-health-check*
+# ==========================================
+# PERSONAL FILES & DATA DUMPS
+# ==========================================
+*.pdf
+*.sqlite
+*.db
+*.sql.gz
+postgres-data/
+data/
 
-# debug
+# ==========================================
+# LOGS, DEBUG & CACHES
+# ==========================================
 npm-debug.*
 yarn-debug.*
 yarn-error.*
+*.log
+.metro-health-check*
 
-# macOS
+# ==========================================
+# OS & SYSTEM ARTIFACTS
+# ==========================================
 .DS_Store
-*.pem
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
 
-# local env files
-.env*.local
-
-# typescript
-*.tsbuildinfo
-
-# generated native folders
-/ios
-/android
-
-# Security
-.env
-.env.development.bak
-
-# Personal and Media files
-*.pdf
-
-# AI Agents and IDE configs
+# ==========================================
+# IDE & AI AGENT CONFIGURATIONS
+# ==========================================
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
 .claude/
 CLAUDE.md
 AGENTS.md
