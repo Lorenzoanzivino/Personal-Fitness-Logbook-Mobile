@@ -243,6 +243,6 @@ Per garantire una resa visiva ottimale sui dispositivi mobili ed evitare artefat
   * Utilizzo dell'asset `assets/transparent.png` (pixel 1x1 trasparente) con sfondo `#0F172A` e `resizeMode: "contain"`.
   * Elimina definitivamente il fallback visivo della griglia grigia di Expo durante il caricamento iniziale dell'app.
 
----
+----
 
 *My Train Up © 2026 - Lorenzo Anzivino. Tutti i diritti riservati.*
