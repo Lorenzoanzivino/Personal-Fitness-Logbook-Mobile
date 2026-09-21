@@ -1,100 +1,90 @@
 name: Build and Deploy to Production VPS
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'backend/**'
-      - 'docker-compose.yml'
-      - 'postgres.conf'
-      - 'nginx/**'
-      - '.github/workflows/deploy.yml'
-  workflow_dispatch:
+    push:
+        branches:
+            - master   # <-- CORRETTO DA main A master
+        paths:
+            - 'backend/**'
+            - 'docker-compose.yml'
+            - 'postgres.conf'
+            - 'nginx/**'
+            - '.github/workflows/deploy.yml'
+    workflow_dispatch:
 
 permissions:
-  contents: read
-  packages: write
+    contents: read
+    packages: write
 
 env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}-backend
+    REGISTRY: ghcr.io
+    IMAGE_NAME: ${{ github.repository }}-backend
 
 jobs:
-  # ===================================================================
-  # JOB 1: Compilazione Immagine Docker e Push su GitHub Container Registry
-  # ===================================================================
-  build-and-push:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout del codice
-        uses: actions/checkout@v4
+    build-and-push:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout del codice
+              uses: actions/checkout@v4
 
-      - name: Configurazione Docker Buildx
-        uses: docker/setup-buildx-action@v3
+            - name: Configurazione Docker Buildx
+              uses: docker/setup-buildx-action@v3
 
-      - name: Autenticazione su GitHub Container Registry (GHCR)
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+            - name: Autenticazione su GitHub Container Registry (GHCR)
+              uses: docker/login-action@v3
+              with:
+                  registry: ${{ env.REGISTRY }}
+                  username: ${{ github.actor }}
+                  password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Generazione tag e metadati Docker
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=raw,value=latest
-            type=sha,format=short
+            - name: Generazione tag e metadati Docker
+              id: meta
+              uses: docker/metadata-action@v5
+              with:
+                  images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+                  tags: |
+                      type=raw,value=latest
+                      type=sha,format=short
 
-      - name: Build e Push dell'immagine backend
-        uses: docker/build-push-action@v5
-        with:
-          context: ./backend
-          file: ./backend/Dockerfile
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+            - name: Build e Push dell'immagine backend
+              uses: docker/build-push-action@v5
+              with:
+                  context: ./backend
+                  file: ./backend/Dockerfile
+                  push: true
+                  tags: ${{ steps.meta.outputs.tags }}
+                  labels: ${{ steps.meta.outputs.labels }}
+                  cache-from: type=gha
+                  cache-to: type=gha,mode=max
 
-  # ===================================================================
-  # JOB 2: Deploy Automatico via SSH su VPS AlmaLinux 9
-  # ===================================================================
-  deploy:
-    needs: build-and-push
-    runs-on: ubuntu-latest
-    steps:
-      - name: Esecuzione Deploy su VPS via SSH
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          port: ${{ secrets.VPS_PORT || 22 }}
-          script: |
-            set -e
-            echo "=== [1/5] Connessione a VPS e navigazione in /opt/fitness-logbook ==="
-            mkdir -p /opt/fitness-logbook
-            cd /opt/fitness-logbook
+    deploy:
+        needs: build-and-push
+        runs-on: ubuntu-latest
+        steps:
+            - name: Esecuzione Deploy su VPS via SSH
+              uses: appleboy/ssh-action@v1.0.3
+              with:
+                  host: ${{ secrets.SERVER_IP }}        # <-- ALLINEATO AL TUO SEGRETO
+                  username: ${{ secrets.SERVER_USERNAME }}  # <-- ALLINEATO AL TUO SEGRETO
+                  password: ${{ secrets.SERVER_PASSWORD }}  # <-- USIAMO LA PASSWORD INVECE DELLA CHIAVE SSH
+                  port: 22
+                  script: |
+                      set -e
+                      echo "=== [1/5] Connessione a VPS e navigazione in /opt/fitness-logbook ==="
+                      mkdir -p /opt/fitness-logbook
+                      cd /opt/fitness-logbook
 
-            echo "=== [2/5] Login a GHCR sulla VPS ==="
-            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+                      echo "=== [2/5] Login a GHCR sulla VPS ==="
+                      echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
-            echo "=== [3/5] Download della nuova immagine API compilata ==="
-            docker compose pull api
+                      echo "=== [3/5] Download della nuova immagine API compilata ==="
+                      docker compose pull api
 
-            echo "=== [4/5] Riavvio progressivo container (Zero-Downtime & Auto-Migrazioni) ==="
-            # All'avvio del nuovo container api, l'entrypoint esegue:
-            # 'node dist/db/migrate.js' che applica in modo transazionale
-            # solo le nuove migrazioni Drizzle prima di avviare il server Fastify.
-            docker compose up -d --remove-orphans --no-build
+                      echo "=== [4/5] Riavvio progressivo container (Zero-Downtime & Auto-Migrazioni) ==="
+                      docker compose up -d --remove-orphans --no-build
 
-            echo "=== [5/5] Verifica dello stato e pulizia immagini obsolete ==="
-            sleep 5
-            docker compose ps
-            # Rimuove le immagini orfane senza tag per preservare lo spazio su NVMe da 60 GB
-            docker image prune -f
-            echo ">>> DEPLOY COMPLETATO CON SUCCESSO! <<<"
+                      echo "=== [5/5] Verifica dello stato e pulizia immagini obsolete ==="
+                      sleep 5
+                      docker compose ps
+                      docker image prune -f
+                      echo ">>> DEPLOY COMPLETATO CON SUCCESSO! <<<"
