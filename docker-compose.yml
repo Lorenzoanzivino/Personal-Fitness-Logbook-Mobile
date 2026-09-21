@@ -35,7 +35,7 @@ services:
   # 2. BACKEND API: Node.js (TypeScript + Fastify + Drizzle ORM)
   # -------------------------------------------------------------------
   api:
-    image: ghcr.io/${GHCR_REPO_OWNER:-lorenzoanzivino}/personal-fitness-logbook-backend:latest
+    image: ghcr.io/lorenzoanzivino/personal-fitness-logbook-mobile-backend:latest
     container_name: fitness-api
     restart: unless-stopped
     depends_on:
