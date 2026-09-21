@@ -42,6 +42,7 @@ yarn-error.*
 
 # Security
 .env
+.env.development.bak
 
 # Personal and Media files
 *.pdf
