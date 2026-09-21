@@ -48,6 +48,13 @@ expo-env.d.ts
 *.orig.*
 
 # ==========================================
+# SENSITIVE PRODUCTION SPECS & PRIVATE DOCS
+# ==========================================
+.IONOS_PRODUCTION_SPEC.md
+docs/.IONOS_PRODUCTION_SPEC.md
+.*_SPEC.md
+
+# ==========================================
 # PERSONAL FILES & DATA DUMPS
 # ==========================================
 *.pdf
