@@ -2,6 +2,7 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import jwt from '@fastify/jwt';
 import * as dotenv from 'dotenv';
+import { authenticate, requireTrainer } from './middleware/auth';
 import { runMigrationsAndSeed } from './db/migrate';
 import { authRoutes } from './routes/authRoutes';
 import { routineRoutes } from './routes/routineRoutes';
@@ -9,6 +10,7 @@ import { workoutRoutes } from './routes/workoutRoutes';
 import { folderRoutes } from './routes/folderRoutes';
 import { exerciseRoutes } from './routes/exerciseRoutes';
 import { profileRoutes } from './routes/profileRoutes';
+import { measurementRoutes } from './routes/measurementRoutes';
 import { healthRoutes } from './routes/healthRoutes';
 
 dotenv.config();
@@ -36,6 +38,10 @@ async function buildApp() {
     secret: process.env.JWT_SECRET || 'fitness_super_secret_jwt_key_2026_change_in_production',
   });
 
+  // Decoratori di autenticazione e autorizzazione RBAC
+  fastify.decorate('authenticate', authenticate);
+  fastify.decorate('requireTrainer', requireTrainer);
+
   // Registrazione Moduli Rotte REST
   await fastify.register(healthRoutes);
   await fastify.register(authRoutes);
@@ -44,6 +50,7 @@ async function buildApp() {
   await fastify.register(folderRoutes);
   await fastify.register(exerciseRoutes);
   await fastify.register(profileRoutes);
+  await fastify.register(measurementRoutes);
 
   return fastify;
 }

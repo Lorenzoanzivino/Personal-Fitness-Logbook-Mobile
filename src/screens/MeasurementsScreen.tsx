@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { View, Text, TextInput, StyleSheet, ScrollView, Pressable } from 'react-native';
+import { View, Text, TextInput, StyleSheet, ScrollView, Pressable, RefreshControl } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { TabNavigationProp } from '../types/navigation';
 import { colors } from '../theme/colors';
@@ -15,8 +15,38 @@ import { ScreenBackgroundWrapper } from '../components/ScreenBackgroundWrapper';
 export const MeasurementsScreen: React.FC = () => {
   const navigation = useNavigation<TabNavigationProp<'Measurements'>>();
   const scrollViewRef = useRef<ScrollView>(null);
-  const { measurements, latestMeasurement, addMeasurement, updateMeasurement, deleteMeasurement } =
-    useMeasurements();
+  const {
+    measurements,
+    latestMeasurement,
+    isReadOnly,
+    activeOwnerName,
+    addMeasurement,
+    updateMeasurement,
+    deleteMeasurement,
+    reloadMeasurements,
+  } = useMeasurements();
+
+  const [refreshing, setRefreshing] = useState(false);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await reloadMeasurements();
+      setToast({
+        visible: true,
+        type: 'success',
+        message: 'Misurazioni aggiornate con successo!',
+      });
+    } catch {
+      setToast({
+        visible: true,
+        type: 'error',
+        message: "Errore durante l'aggiornamento delle misurazioni.",
+      });
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   // Expanded card tracking (allow multiple or single expanded)
   const [expandedId, setExpandedId] = useState<number | null>(
@@ -57,6 +87,15 @@ export const MeasurementsScreen: React.FC = () => {
   };
 
   const handleDeleteConfirm = (m: BodyMeasurement) => {
+    if (isReadOnly) {
+      setToast({
+        visible: true,
+        type: 'error',
+        message: "Azione non consentita: le misurazioni dell'atleta sono consultabili esclusivamente in sola lettura.",
+      });
+      return;
+    }
+
     setConfirmModal({
       visible: true,
       title: 'Elimina Rilevazione',
@@ -83,6 +122,15 @@ export const MeasurementsScreen: React.FC = () => {
   };
 
   const handleStartEdit = (m: BodyMeasurement) => {
+    if (isReadOnly) {
+      setToast({
+        visible: true,
+        type: 'error',
+        message: "Azione non consentita: le misurazioni dell'atleta sono consultabili esclusivamente in sola lettura.",
+      });
+      return;
+    }
+
     setEditingMeasurementId(m.id);
     setFormDate(m.recorded_at ? m.recorded_at.split('T')[0] : new Date().toISOString().split('T')[0]);
     setFormWeight(m.weight_kg !== undefined && m.weight_kg !== null ? String(m.weight_kg) : '');
@@ -113,6 +161,15 @@ export const MeasurementsScreen: React.FC = () => {
   };
 
   const handleSaveOrUpdate = async () => {
+    if (isReadOnly) {
+      setToast({
+        visible: true,
+        type: 'error',
+        message: "Azione non consentita: le misurazioni dell'atleta sono consultabili esclusivamente in sola lettura.",
+      });
+      return;
+    }
+
     const cleanWeight = parseFloat(formWeight.replace(',', '.'));
     if (isNaN(cleanWeight) || cleanWeight <= 0 || cleanWeight > 350) {
       setToast({
@@ -205,31 +262,60 @@ export const MeasurementsScreen: React.FC = () => {
         style={styles.container}
         contentContainerStyle={styles.contentContainer}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={colors.accent}
+            colors={[colors.accent]}
+          />
+        }
       >
         {/* Header */}
         <View style={styles.headerRow}>
           <View>
-            <Text style={typography.caption}>COMPOSIZIONE CORPOREA & BIOIMPEDENZA</Text>
+            <Text style={typography.caption}>
+              {isReadOnly && activeOwnerName
+                ? `COMPOSIZIONE CORPOREA • ${activeOwnerName.toUpperCase()}`
+                : 'COMPOSIZIONE CORPOREA & BIOIMPEDENZA'}
+            </Text>
             <Text style={typography.h1}>Misurazioni</Text>
           </View>
-          <Pressable
-            onPress={() => {
-              handleCancelEdit();
-              scrollViewRef.current?.scrollTo({ y: 0, animated: true });
-            }}
-            style={({ pressed }) => [
-              styles.actionButton,
-              { opacity: pressed ? 0.85 : 1 },
-            ]}
-            accessibilityRole="button"
-            accessibilityLabel="Registra nuova pesata corporea"
-          >
-            <Text style={styles.actionButtonText}>+ Nuova Pesata</Text>
-          </Pressable>
+          {!isReadOnly ? (
+            <Pressable
+              onPress={() => {
+                handleCancelEdit();
+                scrollViewRef.current?.scrollTo({ y: 0, animated: true });
+              }}
+              style={({ pressed }) => [
+                styles.actionButton,
+                { opacity: pressed ? 0.85 : 1 },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="Registra nuova pesata corporea"
+            >
+              <Text style={styles.actionButtonText}>+ Nuova Pesata</Text>
+            </Pressable>
+          ) : (
+            <View style={styles.readOnlyTag}>
+              <Text style={styles.readOnlyTagText}>👁️ Sola Lettura</Text>
+            </View>
+          )}
         </View>
 
+        {/* Read-Only Callout Banner */}
+        {isReadOnly && (
+          <View style={styles.readOnlyBanner}>
+            <Text style={styles.readOnlyBannerTitle}>👁️ VISUALIZZAZIONE DATI ATLETA</Text>
+            <Text style={styles.readOnlyBannerText}>
+              Stai consultando le rilevazioni corporee di {activeOwnerName || "l'atleta"}. Per garantire la massima privacy e l'isolamento dei dati personali, le misurazioni possono essere aggiunte o modificate solo dal profilo personale dell'atleta.
+            </Text>
+          </View>
+        )}
+
         {/* Input & Edit Form Card */}
-        <Card style={styles.formCard}>
+        {!isReadOnly && (
+          <Card style={styles.formCard}>
           <View style={styles.formCardHeader}>
             <View style={{ flex: 1 }}>
               <Text style={typography.label}>
@@ -360,6 +446,7 @@ export const MeasurementsScreen: React.FC = () => {
             </Pressable>
           </View>
         </Card>
+      )}
 
         {/* Main Metric Card */}
         {latestMeasurement ? (
@@ -630,25 +717,27 @@ export const MeasurementsScreen: React.FC = () => {
                     </View>
                   )}
 
-                  <View style={styles.expandedFooter}>
-                    <Pressable
-                      onPress={() => handleStartEdit(m)}
-                      style={styles.editButton}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Modifica pesata del ${formatDate(m.recorded_at)}`}
-                    >
-                      <Text style={styles.editButtonText}>✏️ Modifica</Text>
-                    </Pressable>
+                  {!isReadOnly && (
+                    <View style={styles.expandedFooter}>
+                      <Pressable
+                        onPress={() => handleStartEdit(m)}
+                        style={styles.editButton}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Modifica pesata del ${formatDate(m.recorded_at)}`}
+                      >
+                        <Text style={styles.editButtonText}>✏️ Modifica</Text>
+                      </Pressable>
 
-                    <Pressable
-                      onPress={() => handleDeleteConfirm(m)}
-                      style={styles.deleteButton}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Elimina pesata del ${formatDate(m.recorded_at)}`}
-                    >
-                      <Text style={styles.deleteButtonText}>🗑 Elimina</Text>
-                    </Pressable>
-                  </View>
+                      <Pressable
+                        onPress={() => handleDeleteConfirm(m)}
+                        style={styles.deleteButton}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Elimina pesata del ${formatDate(m.recorded_at)}`}
+                      >
+                        <Text style={styles.deleteButtonText}>🗑 Elimina</Text>
+                      </Pressable>
+                    </View>
+                  )}
                 </View>
               )}
             </Card>
@@ -1000,5 +1089,38 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontWeight: '700',
     fontSize: 12,
+  },
+  readOnlyBanner: {
+    backgroundColor: 'rgba(59, 130, 246, 0.12)',
+    borderColor: '#3B82F6',
+    borderWidth: 1,
+    borderRadius: layout.borderRadiusSm,
+    padding: 12,
+    marginBottom: 16,
+  },
+  readOnlyBannerTitle: {
+    color: '#60A5FA',
+    fontSize: 12,
+    fontWeight: '800',
+    marginBottom: 4,
+    letterSpacing: 0.5,
+  },
+  readOnlyBannerText: {
+    color: colors.textSecondary,
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  readOnlyTag: {
+    backgroundColor: 'rgba(59, 130, 246, 0.15)',
+    borderColor: '#3B82F6',
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: layout.borderRadiusSm,
+  },
+  readOnlyTagText: {
+    color: '#60A5FA',
+    fontSize: 11,
+    fontWeight: '700',
   },
 });

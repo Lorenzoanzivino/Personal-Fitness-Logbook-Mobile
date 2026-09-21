@@ -67,7 +67,8 @@ async function safeGetParsed<T>(key: string, fallback: T): Promise<T> {
  * Raccoglie tutti i dati operativi in un unico oggetto JSON consolidato.
  * Operazione strettamente di lettura (read-only).
  */
-export async function exportFullBackup(): Promise<string> {
+export async function exportFullBackup(userId?: string): Promise<string> {
+  const measurementKey = userId ? `@measurements_v3_${userId}` : STORAGE_KEYS.MEASUREMENTS;
   const [
     profile,
     provisionedClients,
@@ -75,7 +76,8 @@ export async function exportFullBackup(): Promise<string> {
     workouts,
     folders,
     exercises,
-    measurements,
+    userMeasurements,
+    legacyMeasurements,
     diets,
   ] = await Promise.all([
     safeGetParsed<any | null>(STORAGE_KEYS.PROFILE, null),
@@ -84,9 +86,12 @@ export async function exportFullBackup(): Promise<string> {
     safeGetParsed<any[]>(STORAGE_KEYS.WORKOUTS, []),
     safeGetParsed<any[]>(STORAGE_KEYS.FOLDERS, []),
     safeGetParsed<any[]>(STORAGE_KEYS.EXERCISES, []),
+    safeGetParsed<any[]>(measurementKey, []),
     safeGetParsed<any[]>(STORAGE_KEYS.MEASUREMENTS, []),
     safeGetParsed<any[]>(STORAGE_KEYS.DIETS, []),
   ]);
+
+  const measurements = userMeasurements && userMeasurements.length > 0 ? userMeasurements : legacyMeasurements;
 
   const nowIso = new Date().toISOString();
 

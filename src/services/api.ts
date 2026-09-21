@@ -7,6 +7,7 @@ import {
 } from '../types/api';
 import { WorkoutRoutine, RoutineFolder, Workout, Exercise } from '../types/workout';
 import { AuthSession, LoginCredentials, ProvisionedClient } from '../types/auth';
+import { BodyMeasurement, CreateBodyMeasurementDto } from '../types/measurement';
 import { gymStorage } from './gymStorage';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -392,6 +393,32 @@ class ApiService {
     }
     const local = await gymStorage.loadExercises();
     return { success: true, data: local, error: null };
+  }
+
+  // ==========================================
+  // BODY MEASUREMENTS (ISOLATED PER USER)
+  // ==========================================
+
+  async fetchMeasurements(clientId?: string): Promise<ApiResponse<BodyMeasurement[]>> {
+    const path = clientId
+      ? `/api/v1/measurements?client_id=${encodeURIComponent(clientId)}`
+      : '/api/v1/measurements';
+    return this.get<BodyMeasurement[]>(path);
+  }
+
+  async addMeasurement(dto: CreateBodyMeasurementDto): Promise<ApiResponse<BodyMeasurement>> {
+    return this.post<BodyMeasurement>('/api/v1/measurements', dto);
+  }
+
+  async updateMeasurement(
+    id: number,
+    dto: Partial<CreateBodyMeasurementDto>
+  ): Promise<ApiResponse<BodyMeasurement>> {
+    return this.put<BodyMeasurement>(`/api/v1/measurements/${id}`, dto);
+  }
+
+  async deleteMeasurement(id: number): Promise<ApiResponse<{ id: number; deleted: boolean }>> {
+    return this.delete<{ id: number; deleted: boolean }>(`/api/v1/measurements/${id}`);
   }
 }
 

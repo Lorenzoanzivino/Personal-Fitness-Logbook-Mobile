@@ -1,35 +1,37 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BodyMeasurement, CreateBodyMeasurementDto } from '../types/measurement';
 
-const STORAGE_KEY = '@measurements_v3';
+const getStorageKey = (userId?: string | null) => `@measurements_v3_${userId || 'default'}`;
 
 export const DEFAULT_MEASUREMENTS: BodyMeasurement[] = [];
 
 export const measurementStorage = {
-  async loadMeasurements(): Promise<BodyMeasurement[]> {
+  async loadMeasurements(userId?: string | null): Promise<BodyMeasurement[]> {
+    const key = getStorageKey(userId);
     try {
-      const raw = await AsyncStorage.getItem(STORAGE_KEY);
+      const raw = await AsyncStorage.getItem(key);
       if (raw) {
         return JSON.parse(raw);
       }
-      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(DEFAULT_MEASUREMENTS));
+      await AsyncStorage.setItem(key, JSON.stringify(DEFAULT_MEASUREMENTS));
       return DEFAULT_MEASUREMENTS;
     } catch (e) {
-      console.warn('Errore lettura misurazioni da AsyncStorage:', e);
+      console.warn(`Errore lettura misurazioni per ${key} da AsyncStorage:`, e);
       return DEFAULT_MEASUREMENTS;
     }
   },
 
-  async saveMeasurements(measurements: BodyMeasurement[]): Promise<void> {
+  async saveMeasurements(measurements: BodyMeasurement[], userId?: string | null): Promise<void> {
+    const key = getStorageKey(userId);
     try {
-      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(measurements));
+      await AsyncStorage.setItem(key, JSON.stringify(measurements));
     } catch (e) {
-      console.warn('Errore salvataggio misurazioni su AsyncStorage:', e);
+      console.warn(`Errore salvataggio misurazioni per ${key} su AsyncStorage:`, e);
     }
   },
 
-  async addMeasurement(dto: CreateBodyMeasurementDto): Promise<BodyMeasurement> {
-    const list = await this.loadMeasurements();
+  async addMeasurement(dto: CreateBodyMeasurementDto, userId?: string | null): Promise<BodyMeasurement> {
+    const list = await this.loadMeasurements(userId);
     const newId = list.length > 0 ? Math.max(...list.map((m) => m.id)) + 1 : 1;
     const now = new Date().toISOString();
 
@@ -56,18 +58,20 @@ export const measurementStorage = {
       notes: dto.notes?.trim() || null,
       created_at: now,
       updated_at: now,
+      owner_id: userId || undefined,
     };
 
     const updated = [newMeasurement, ...list];
-    await this.saveMeasurements(updated);
+    await this.saveMeasurements(updated, userId);
     return newMeasurement;
   },
 
   async updateMeasurement(
     id: number,
-    updatedData: Partial<CreateBodyMeasurementDto>
+    updatedData: Partial<CreateBodyMeasurementDto>,
+    userId?: string | null
   ): Promise<BodyMeasurement | null> {
-    const list = await this.loadMeasurements();
+    const list = await this.loadMeasurements(userId);
     const index = list.findIndex((m) => m.id === id);
     if (index === -1) return null;
 
@@ -92,21 +96,22 @@ export const measurementStorage = {
     };
 
     list[index] = updatedItem;
-    await this.saveMeasurements(list);
+    await this.saveMeasurements(list, userId);
     return updatedItem;
   },
 
-  async deleteMeasurement(id: number): Promise<void> {
-    const list = await this.loadMeasurements();
+  async deleteMeasurement(id: number, userId?: string | null): Promise<void> {
+    const list = await this.loadMeasurements(userId);
     const updated = list.filter((m) => m.id !== id);
-    await this.saveMeasurements(updated);
+    await this.saveMeasurements(updated, userId);
   },
 
-  async clearAllMeasurements(): Promise<void> {
+  async clearAllMeasurements(userId?: string | null): Promise<void> {
+    const key = getStorageKey(userId);
     try {
-      await AsyncStorage.removeItem(STORAGE_KEY);
+      await AsyncStorage.removeItem(key);
     } catch (e) {
-      console.warn('Errore pulizia misurazioni:', e);
+      console.warn(`Errore pulizia misurazioni per ${key}:`, e);
     }
   },
 };

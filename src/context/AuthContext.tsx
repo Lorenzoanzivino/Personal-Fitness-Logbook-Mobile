@@ -3,6 +3,7 @@ import { AuthUser, LoginCredentials, ProvisionedClient } from '../types/auth';
 import { UserRole } from '../types/profile';
 import { authService } from '../services/authService';
 import { profileService } from '../services/profileService';
+import { apiService } from '../services/api';
 
 interface AuthContextType {
   isAuthenticated: boolean;
@@ -55,6 +56,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setProvisionedClients(clients);
 
       if (savedSession && savedSession.user && savedSession.token) {
+        apiService.setAuthToken(savedSession.token);
         const userAvatar = await profileService.getUserAvatar(savedSession.user.id);
         const userWithAvatar = {
           ...savedSession.user,
@@ -105,6 +107,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     if (res.success && res.data) {
       const { user: loggedUser, token: loggedToken } = res.data;
+      apiService.setAuthToken(loggedToken);
       const userAvatar = await profileService.getUserAvatar(loggedUser.id);
       const userWithAvatar = {
         ...loggedUser,
@@ -125,6 +128,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const logout = async (): Promise<void> => {
+    apiService.setAuthToken(null);
     await authService.clearSession();
     await profileService.resetProfile();
     setUser(null);

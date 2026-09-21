@@ -19,7 +19,7 @@ export interface BodyMeasurement {
 }
 
 export interface CreateBodyMeasurementDto {
-  recorded_at: string;
+  recorded_at?: string;
   weight_kg: number;
   bmi?: number;
   body_fat_pct?: number;

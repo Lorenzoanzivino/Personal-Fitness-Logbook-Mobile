@@ -77,7 +77,7 @@ export async function authRoutes(fastify: FastifyInstance) {
     const token = fastify.jwt.sign({
       id: user.id,
       username: user.username,
-      role: user.role,
+      role: user.role as 'TRAINER' | 'CLIENT',
     });
 
     const session: AuthSession = {

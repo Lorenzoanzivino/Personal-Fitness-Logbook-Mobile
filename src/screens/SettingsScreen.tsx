@@ -30,6 +30,7 @@ import { exportFullBackup, shareBackupFile } from '../services/backupService';
 import { useGym } from '../context/GymContext';
 import { useMeasurements } from '../context/MeasurementContext';
 import { useDiet } from '../context/DietContext';
+import { useAuth } from '../context/AuthContext';
 
 interface ParsedBackupData {
   appName: string;
@@ -44,6 +45,7 @@ interface ParsedBackupData {
 }
 
 export const SettingsScreen: React.FC = () => {
+  const { user } = useAuth();
   const { resetEntireApp, reloadGymData } = useGym();
   const { reloadMeasurements } = useMeasurements();
   const { reloadDiets } = useDiet();
@@ -90,7 +92,7 @@ export const SettingsScreen: React.FC = () => {
     if (isExportingBackup) return;
     try {
       setIsExportingBackup(true);
-      const jsonString = await exportFullBackup();
+      const jsonString = await exportFullBackup(user?.id);
       await shareBackupFile(jsonString);
       showToast('success', 'Backup JSON completo esportato con successo!');
     } catch (err: any) {
@@ -104,7 +106,7 @@ export const SettingsScreen: React.FC = () => {
   // Export Logic - Copy to Clipboard fallback
   const handleCopyJsonToClipboard = async () => {
     try {
-      const jsonString = await exportFullBackup();
+      const jsonString = await exportFullBackup(user?.id);
       await Clipboard.setStringAsync(jsonString);
       showToast('success', 'Backup JSON completo copiato negli appunti!');
     } catch {
@@ -232,7 +234,7 @@ export const SettingsScreen: React.FC = () => {
             await gymStorage.saveExercises(parsedBackup.exercises);
           }
           if (parsedBackup.measurements) {
-            await measurementStorage.saveMeasurements(parsedBackup.measurements);
+            await measurementStorage.saveMeasurements(parsedBackup.measurements, user?.id);
           }
           if (parsedBackup.diets) {
             await dietStorage.saveDiets(parsedBackup.diets);
@@ -273,7 +275,7 @@ export const SettingsScreen: React.FC = () => {
       onConfirm: async () => {
         try {
           await resetEntireApp();
-          await measurementStorage.clearAllMeasurements();
+          await measurementStorage.clearAllMeasurements(user?.id);
           await dietStorage.clearAllDiets();
           await authService.clearAllProvisionedClients();
           await profileService.resetProfile();
