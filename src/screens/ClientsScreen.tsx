@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Alert,
   Platform,
+  RefreshControl,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { colors } from '../theme/colors';
@@ -32,6 +33,7 @@ export const ClientsScreen: React.FC = () => {
     archiveClient,
     unarchiveClient,
     hardDeleteClient,
+    refreshProvisionedClients,
   } = useAuth();
   const { selectedClient, setSelectedClient, reloadGymData } = useGym();
 
@@ -63,6 +65,21 @@ export const ClientsScreen: React.FC = () => {
 
   const showToast = (type: ToastType, message: string) => {
     setToast({ visible: true, type, message });
+  };
+
+  // Pull-to-Refresh State & Handler
+  const [refreshing, setRefreshing] = useState(false);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([refreshProvisionedClients(), reloadGymData()]);
+      showToast('success', 'Lista atleti aggiornata!');
+    } catch {
+      showToast('error', 'Errore durante l\'aggiornamento.');
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   // Custom Confirm Modal State
@@ -249,6 +266,14 @@ export const ClientsScreen: React.FC = () => {
         style={styles.scroll}
         contentContainerStyle={styles.contentContainer}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            colors={[colors.primary]}
+            tintColor={colors.primary}
+          />
+        }
       >
         {/* Header */}
         <View style={styles.header}>

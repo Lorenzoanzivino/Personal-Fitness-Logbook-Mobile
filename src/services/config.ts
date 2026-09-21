@@ -3,8 +3,8 @@
  * Le variabili sono lette dall'ambiente Expo (prefisso EXPO_PUBLIC_).
  */
 export const API_CONFIG = {
-  // In development, defaults to localhost:3001 if not configured
-  baseUrl: process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3001',
+  // In development, defaults to localhost:8000 (Fastify server) if not configured
+  baseUrl: process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8000',
   timeoutMs: 15000,
   apiVersion: 'v1',
 };

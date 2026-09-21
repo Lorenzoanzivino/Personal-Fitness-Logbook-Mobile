@@ -11,6 +11,7 @@ import {
 import { UserProfile, UserRole, ClientAssociation } from '../types/profile';
 import { gymStorage } from '../services/gymStorage';
 import { profileService } from '../services/profileService';
+import { apiService } from '../services/api';
 
 interface ProgressionHistoryPoint {
   date: string;
@@ -215,6 +216,7 @@ export const GymProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const loadAllGymData = async () => {
     setLoading(true);
     try {
+      // 1. Caricamento immediato da cache locale (Offline first)
       const [exList, routList, workList, foldList] = await Promise.all([
         gymStorage.loadExercises(),
         gymStorage.loadRoutines(),
@@ -225,6 +227,35 @@ export const GymProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       setRoutines(routList);
       setWorkouts(workList);
       setFolders(foldList);
+
+      // 2. Sincronizzazione in tempo reale con il server Fastify
+      try {
+        const [remoteEx, remoteRout, remoteWork, remoteFold] = await Promise.all([
+          apiService.fetchExercises(),
+          apiService.fetchRoutinesByOwner(),
+          apiService.fetchWorkoutsByOwner(),
+          apiService.fetchFoldersByOwner(),
+        ]);
+
+        if (remoteEx.success && remoteEx.data && remoteEx.data.length > 0) {
+          setExercises(remoteEx.data);
+          await gymStorage.saveExercises(remoteEx.data);
+        }
+        if (remoteRout.success && remoteRout.data) {
+          setRoutines(remoteRout.data);
+          await gymStorage.saveRoutines(remoteRout.data);
+        }
+        if (remoteWork.success && remoteWork.data) {
+          setWorkouts(remoteWork.data);
+          await gymStorage.saveWorkouts(remoteWork.data);
+        }
+        if (remoteFold.success && remoteFold.data) {
+          setFolders(remoteFold.data);
+          await gymStorage.saveFolders(remoteFold.data);
+        }
+      } catch {
+        // Se il backend non è raggiungibile, i dati locali rimangono intatti
+      }
     } catch (err) {
       console.warn('Errore caricamento dati Gym:', err);
     } finally {
@@ -368,6 +399,23 @@ export const GymProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       throw new Error(`Esiste già una scheda con il nome "${trimmedName}". Scegli un nome diverso.`);
     }
 
+    // 1. Prova creazione su backend remoto
+    try {
+      const remoteRes = await apiService.createRoutine({
+        ...data,
+        name: trimmedName,
+        owner_id: targetOwnerId,
+      });
+      if (remoteRes.success && remoteRes.data) {
+        const updated = [remoteRes.data, ...routines.filter((r) => r.id !== remoteRes.data!.id)];
+        setRoutines(updated);
+        await gymStorage.saveRoutines(updated);
+        return remoteRes.data;
+      }
+    } catch {
+      // Fallback offline
+    }
+
     const newId = routines.length > 0 ? Math.max(...routines.map((r) => r.id)) + 1 : 1;
     const now = new Date().toISOString();
     const newRoutine: WorkoutRoutine = {
@@ -407,6 +455,11 @@ export const GymProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const deleteRoutine = async (id: number): Promise<void> => {
+    try {
+      await apiService.deleteRoutine(id);
+    } catch {
+      // Fallback offline
+    }
     const updated = routines.filter((r) => r.id !== id);
     setRoutines(updated);
     await gymStorage.saveRoutines(updated);
@@ -517,6 +570,19 @@ export const GymProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const saveWorkout = async (
     data: Omit<Workout, 'id' | 'created_at' | 'updated_at'>
   ): Promise<Workout> => {
+    // 1. Prova salvataggio sessione su backend remoto
+    try {
+      const remoteRes = await apiService.saveWorkout(data);
+      if (remoteRes.success && remoteRes.data) {
+        const updated = [remoteRes.data, ...workouts.filter((w) => w.id !== remoteRes.data!.id)];
+        setWorkouts(updated);
+        await gymStorage.saveWorkouts(updated);
+        return remoteRes.data;
+      }
+    } catch {
+      // Fallback offline
+    }
+
     const newId = workouts.length > 0 ? Math.max(...workouts.map((w) => w.id)) + 1 : 1;
     const now = new Date().toISOString();
     const newWorkout: Workout = {
@@ -532,6 +598,11 @@ export const GymProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const deleteWorkout = async (id: number): Promise<void> => {
+    try {
+      await apiService.deleteWorkout(id);
+    } catch {
+      // Fallback offline
+    }
     const updated = workouts.filter((w) => w.id !== id);
     setWorkouts(updated);
     await gymStorage.saveWorkouts(updated);

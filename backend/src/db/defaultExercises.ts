@@ -1,0 +1,343 @@
+import { Exercise } from '../types/workout';
+
+export const DEFAULT_EXERCISES: Omit<Exercise, 'id' | 'created_at'>[] = [
+  // Petto (6)
+  {
+    name: 'Panca Piana con Bilanciere',
+    muscle_group: 'Petto',
+    exercise_type: 'reps',
+    is_archived: 0,
+    notes: 'Presa leggermente più ampia delle spalle, scapole addotte e depresse.',
+  },
+  {
+    name: 'Panca Inclinata con Manubri',
+    muscle_group: 'Petto',
+    exercise_type: 'reps',
+    is_archived: 0,
+    notes: 'Inclinazione panca 30 gradi, focus su fascio clavicolare.',
+  },
+  {
+    name: 'Croci ai Cavi',
+    muscle_group: 'Petto',
+    exercise_type: 'reps',
+    is_archived: 0,
+    notes: 'Tensione continua sul gran pettorale, picco di contrazione 1s.',
+  },
+  {
+    name: 'Dip alle Parallele',
+    muscle_group: 'Petto',
+    exercise_type: 'bodyweight',
+    is_archived: 0,
+    notes: 'Busto leggermente inclinato in avanti per focus pettorale.',
+  },
+  {
+    name: 'Chest Press Macchina',
+    muscle_group: 'Petto',
+    exercise_type: 'reps',
+    is_archived: 0,
+    notes: 'Spinta controllata, gomiti mai iperestesi.',
+  },
+  {
+    name: 'Piegamenti sulle Braccia (Push-ups)',
+    muscle_group: 'Petto',
+    exercise_type: 'bodyweight',
+    is_archived: 0,
+    notes: 'Corpo in linea retta, core saldo in tenuta plank.',
+  },
+
+  // Dorso (6)
+  {
+    name: 'Trazioni alla Sbarra (Pull-ups)',
+    muscle_group: 'Dorso',
+    exercise_type: 'bodyweight',
+    is_archived: 0,
+    notes: 'Presa prona, depressione scapolare prima della trazione.',
+  },
+  {
+    name: 'Lat Machine Avanti',
+    muscle_group: 'Dorso',
+    exercise_type: 'reps',
+    is_archived: 0,
+    notes: 'Barra portata al petto superiore, controllo eccentrico 2s.',
+  },
+  {
+    name: 'Rematore con Bilanciere',
+    muscle_group: 'Dorso',
+    exercise_type: 'reps',
+    is_archived: 0,
+    notes: 'Busto a 45 gradi, schiena neutra, trazione verso il bacino.',
+  },
+  {
+    name: 'Pulley Basso al Cavo',
+    muscle_group: 'Dorso',
+    exercise_type: 'reps',
+    is_archived: 0,
+    notes: 'Adduzione scapolare completa alla fine del movimento.',
+  },
+  {
+    name: 'Rematore con Manubrio Singolo',
+    muscle_group: 'Dorso',
+    exercise_type: 'reps',
+    is_archived: 0,
+    notes: 'Ginocchio e mano in appoggio su panca piana.',
+  },
+  {
+    name: 'Stacco da Terra (Deadlift)',
+    muscle_group: 'Dorso',
+    exercise_type: 'reps',
+    is_archived: 0,
+    notes: 'Setup fondamentale per catena cinetica posteriore.',
+  },
+
+  // Spalle (5)
+  {
+    name: 'Military Press con Bilanciere',
+    muscle_group: 'Spalle',
+    exercise_type: 'reps',
+    is_archived: 0,
+    notes: 'In piedi, glutei e addome contratti per proteggere la zona lombare.',
+  },
+  {
+    name: 'Alzate Laterali con Manubri',
+    muscle_group: 'Spalle',
+    exercise_type: 'reps',
+    is_archived: 0,
+    notes: 'Gomiti leggermente flessi, focus sul deltoide laterale.',
+  },
+  {
+    name: 'Lento Avanti con Manubri su Panca',
+    muscle_group: 'Spalle',
+    exercise_type: 'reps',
+    is_archived: 0,
+    notes: 'Schienale a 75-80 gradi, spinta verticale controllata.',
+  },
+  {
+    name: 'Face Pull al Cavo con Corda',
+    muscle_group: 'Spalle',
+    exercise_type: 'reps',
+    is_archived: 0,
+    notes: 'Corda tirata verso gli occhi, rotazione esterna delle spalle.',
+  },
+  {
+    name: 'Alzate Posteriori a 90 Gradi',
+    muscle_group: 'Spalle',
+    exercise_type: 'reps',
+    is_archived: 0,
+    notes: 'Focus su deltoide posteriore e romboidi.',
+  },
+
+  // Bicipiti (4)
+  {
+    name: 'Curl con Bilanciere Sagomato (EZ)',
+    muscle_group: 'Bicipiti',
+    exercise_type: 'reps',
+    is_archived: 0,
+    notes: 'Gomiti fissi lungo i fianchi, nessuna oscillazione lombare.',
+  },
+  {
+    name: 'Curl con Manubri a Martello (Hammer)',
+    muscle_group: 'Bicipiti',
+    exercise_type: 'reps',
+    is_archived: 0,
+    notes: 'Presa neutra per target brachiale e brachioradiale.',
+  },
+  {
+    name: 'Curl su Panca Inclinata con Manubri',
+    muscle_group: 'Bicipiti',
+    exercise_type: 'reps',
+    is_archived: 0,
+    notes: 'Massimo allungamento del capo lungo del bicipite.',
+  },
+  {
+    name: 'Concentration Curl su Panca Scott',
+    muscle_group: 'Bicipiti',
+    exercise_type: 'reps',
+    is_archived: 0,
+    notes: 'Isolamento puro, estensione completa controllata.',
+  },
+
+  // Tricipiti (4)
+  {
+    name: 'Pushdown al Cavo con Barra a V',
+    muscle_group: 'Tricipiti',
+    exercise_type: 'reps',
+    is_archived: 0,
+    notes: 'Gomiti adesi al busto, estensione completa in basso.',
+  },
+  {
+    name: 'French Press con Bilanciere Sagomato (EZ)',
+    muscle_group: 'Tricipiti',
+    exercise_type: 'reps',
+    is_archived: 0,
+    notes: 'Su panca piana, barra portata sopra la fronte con controllo.',
+  },
+  {
+    name: 'Dip tra Due Panche',
+    muscle_group: 'Tricipiti',
+    exercise_type: 'bodyweight',
+    is_archived: 0,
+    notes: 'Mani a bordo panca, busto perpendicolare al pavimento.',
+  },
+  {
+    name: 'Estensioni Dietro la Nuca con Manubrio',
+    muscle_group: 'Tricipiti',
+    exercise_type: 'reps',
+    is_archived: 0,
+    notes: 'Ottimo allungamento del capo lungo del tricipite.',
+  },
+
+  // Quadricipiti (5)
+  {
+    name: 'Squat con Bilanciere',
+    muscle_group: 'Quadricipiti',
+    exercise_type: 'reps',
+    is_archived: 0,
+    notes: 'Profondita sotto il parallelo se la mobilita lo consente.',
+  },
+  {
+    name: 'Leg Press 45 Gradi',
+    muscle_group: 'Quadricipiti',
+    exercise_type: 'reps',
+    is_archived: 0,
+    notes: 'Piedi a larghezza spalle al centro della pedana.',
+  },
+  {
+    name: 'Leg Extension Macchina',
+    muscle_group: 'Quadricipiti',
+    exercise_type: 'reps',
+    is_archived: 0,
+    notes: 'Picco di contrazione 1 secondo al vertice del movimento.',
+  },
+  {
+    name: 'Affondi sul Posto con Manubri',
+    muscle_group: 'Quadricipiti',
+    exercise_type: 'reps',
+    is_archived: 0,
+    notes: 'Passo lungo, ginocchio posteriore sfiora il pavimento.',
+  },
+  {
+    name: 'Bulgarian Split Squat',
+    muscle_group: 'Quadricipiti',
+    exercise_type: 'reps',
+    is_archived: 0,
+    notes: 'Piede posteriore in appoggio su panca, busto leggermente avanzato.',
+  },
+
+  // Femorali (4)
+  {
+    name: 'Leg Curl Sdraiato (Prone Leg Curl)',
+    muscle_group: 'Femorali',
+    exercise_type: 'reps',
+    is_archived: 0,
+    notes: 'Bacino aderente al cuscino, nessuna estensione lombare.',
+  },
+  {
+    name: 'Stacco a Gambe Tese con Manubri (RDL)',
+    muscle_group: 'Femorali',
+    exercise_type: 'reps',
+    is_archived: 0,
+    notes: 'Ginocchia semirigide, arretramento attivo del bacino.',
+  },
+  {
+    name: 'Leg Curl da Seduto',
+    muscle_group: 'Femorali',
+    exercise_type: 'reps',
+    is_archived: 0,
+    notes: 'Cuscino cosce bloccato saldamente, escursione completa.',
+  },
+  {
+    name: 'Hip Thrust con Bilanciere',
+    muscle_group: 'Femorali',
+    exercise_type: 'reps',
+    is_archived: 0,
+    notes: 'Spalle su panca, blocco articolare in alto con retroversione.',
+  },
+
+  // Polpacci (3)
+  {
+    name: 'Calf Raise in Piedi alla Macchina',
+    muscle_group: 'Polpacci',
+    exercise_type: 'reps',
+    is_archived: 0,
+    notes: 'Ginocchia tese, massima dorsiflessione e plantarflesione.',
+  },
+  {
+    name: 'Calf Raise da Seduto',
+    muscle_group: 'Polpacci',
+    exercise_type: 'reps',
+    is_archived: 0,
+    notes: 'Focus specifico sul muscolo soleo.',
+  },
+  {
+    name: 'Calf Raise alla Leg Press',
+    muscle_group: 'Polpacci',
+    exercise_type: 'reps',
+    is_archived: 0,
+    notes: 'Punta dei piedi sul bordo inferiore della pedana.',
+  },
+
+  // Addome (9)
+  {
+    name: 'Plank Isometrico a Terra',
+    muscle_group: 'Addome',
+    exercise_type: 'time',
+    is_archived: 0,
+    notes: 'Gomiti sotto le spalle, retroversione del bacino, glutei serrati.',
+  },
+  {
+    name: 'Crunch a Terra',
+    muscle_group: 'Addome',
+    exercise_type: 'reps',
+    is_archived: 0,
+    notes: 'Flessione del busto senza tirare con le mani sul collo.',
+  },
+  {
+    name: 'Hanging Leg Raise alla Sbarra',
+    muscle_group: 'Addome',
+    exercise_type: 'reps',
+    is_archived: 0,
+    notes: 'Sollevamento gambe con retroversione del bacino, no slancio.',
+  },
+  {
+    name: 'Russian Twist con Peso',
+    muscle_group: 'Addome',
+    exercise_type: 'reps',
+    is_archived: 0,
+    notes: 'Rotazione controllata del busto, talloni sollevati.',
+  },
+  {
+    name: 'Ab Roller (Ruota Addominale)',
+    muscle_group: 'Addome',
+    exercise_type: 'reps',
+    is_archived: 0,
+    notes: 'Avanzamento controllato, addome in costante tenuta.',
+  },
+  {
+    name: 'Bicycle Crunch',
+    muscle_group: 'Addome',
+    exercise_type: 'reps',
+    is_archived: 0,
+    notes: 'Gomito verso ginocchio opposto con estensione gamba contraria.',
+  },
+  {
+    name: 'Side Plank',
+    muscle_group: 'Addome',
+    exercise_type: 'time',
+    is_archived: 0,
+    notes: 'Linea retta caviglia-bacino-spalla per focus obliqui.',
+  },
+  {
+    name: 'Mountain Climbers',
+    muscle_group: 'Addome',
+    exercise_type: 'time',
+    is_archived: 0,
+    notes: 'Alternanza rapida ginocchia al petto in posizione pushup.',
+  },
+  {
+    name: 'Cable Crunch al Pulley Alto',
+    muscle_group: 'Addome',
+    exercise_type: 'reps',
+    is_archived: 0,
+    notes: 'In ginocchio con corda, flessione vertebrale attiva.',
+  },
+];

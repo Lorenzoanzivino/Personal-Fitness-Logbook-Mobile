@@ -7,6 +7,7 @@ import {
   ScrollView,
   Pressable,
   ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
@@ -66,6 +67,7 @@ export const GymScreen: React.FC = () => {
     restoreDefaultRoutines,
     getExerciseProgression,
     calculateTotalVolume,
+    reloadGymData,
   } = useGym();
 
   const [activeTab, setActiveTab] = useState<SubTab>(
@@ -138,6 +140,21 @@ export const GymScreen: React.FC = () => {
 
   const showToast = (type: ToastType, message: string) => {
     setToast({ visible: true, type, message });
+  };
+
+  // Pull-to-Refresh State & Handler
+  const [refreshing, setRefreshing] = useState(false);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await reloadGymData();
+      showToast('success', 'Dati sincronizzati con successo!');
+    } catch {
+      showToast('error', 'Errore durante la sincronizzazione.');
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   // Filtered exercises for Catalog tab
@@ -635,6 +652,14 @@ export const GymScreen: React.FC = () => {
         style={styles.content}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            colors={[colors.primary]}
+            tintColor={colors.primary}
+          />
+        }
       >
         {/* ==================== SUB-TAB 1: SCHEDE ==================== */}
         {activeTab === 'routines' && (

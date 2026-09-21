@@ -3,6 +3,7 @@ import { AuthUser, AuthSession, LoginCredentials, ProvisionedClient } from '../t
 import { ApiResponse } from '../types/api';
 import { TRAINER_CONFIG } from './config';
 import { generateUUID } from '../utils/uuid';
+import { apiService } from './api';
 
 const STORAGE_KEY_AUTH_SESSION = '@fitness_auth_session_v2';
 const STORAGE_KEY_PROVISIONED_CLIENTS = '@fitness_provisioned_clients_v2';
@@ -45,6 +46,20 @@ class AuthService {
    * Carica la lista dei clienti provisionati
    */
   async getProvisionedClients(): Promise<ProvisionedClient[]> {
+    try {
+      // 1. Prova a scaricare i clienti aggiornati dal server backend Fastify
+      const remoteRes = await apiService.fetchProvisionedClients();
+      if (remoteRes.success && remoteRes.data) {
+        await AsyncStorage.setItem(
+          STORAGE_KEY_PROVISIONED_CLIENTS,
+          JSON.stringify(remoteRes.data)
+        );
+        return remoteRes.data;
+      }
+    } catch {
+      // Network non disponibile, fallback su storage locale
+    }
+
     try {
       const data = await AsyncStorage.getItem(STORAGE_KEY_PROVISIONED_CLIENTS);
       if (data) {
@@ -90,6 +105,21 @@ class AuthService {
           message: 'Inserisci sia Username che Password/Codice OTP.',
         },
       };
+    }
+
+    // 0. Prova autenticazione con il server Fastify remoto
+    try {
+      const remoteRes = await apiService.login({
+        username: cleanUsername,
+        passwordOrOtp: cleanPasswordOrOtp,
+      });
+      if (remoteRes.success && remoteRes.data) {
+        apiService.setAuthToken(remoteRes.data.token);
+        await this.saveSession(remoteRes.data);
+        return remoteRes;
+      }
+    } catch {
+      // Backend non raggiungibile o offline, fallback su autenticazione locale
     }
 
     // A. Verifica Credenziali TRAINER (Lorenzo o configurato via .env)
@@ -195,6 +225,33 @@ class AuthService {
         data: null,
         error: { code: 'INVALID_LASTNAME', message: 'Il Cognome dell\'atleta è obbligatorio.' },
       };
+    }
+
+    // 0. Prova provisioning su server Fastify
+    try {
+      const remoteRes = await apiService.provisionClient({
+        first_name: cleanFirstName,
+        last_name: cleanLastName,
+        notes: notes?.trim(),
+        trainer_id: TRAINER_ADMIN.user.id,
+        trainer_name: `${TRAINER_ADMIN.user.first_name} ${TRAINER_ADMIN.user.last_name}`,
+      });
+      if (remoteRes.success && remoteRes.data) {
+        const client = remoteRes.data;
+        const currentClients = await this.getProvisionedClients();
+        const updatedList = [client, ...currentClients.filter((c) => c.id !== client.id)];
+        await this.saveProvisionedClients(updatedList);
+        return {
+          success: true,
+          data: {
+            client,
+            otp: client.otp,
+          },
+          error: null,
+        };
+      }
+    } catch {
+      // Backend non raggiungibile, fallback su provisioning locale
     }
 
     const currentClients = await this.getProvisionedClients();

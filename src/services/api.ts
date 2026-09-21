@@ -5,7 +5,8 @@ import {
   LinkClientRequestDto,
   LinkClientResponseDto,
 } from '../types/api';
-import { WorkoutRoutine, RoutineFolder } from '../types/workout';
+import { WorkoutRoutine, RoutineFolder, Workout, Exercise } from '../types/workout';
+import { AuthSession, LoginCredentials, ProvisionedClient } from '../types/auth';
 import { gymStorage } from './gymStorage';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -20,9 +21,18 @@ const STORAGE_KEY_OTPS = '@fitness_active_otps_v1';
 
 class ApiService {
   private inMemoryOtps: Map<string, ActiveOtpRecord> = new Map();
+  private authToken: string | null = null;
 
   constructor() {
     this.loadPersistedOtps();
+  }
+
+  setAuthToken(token: string | null): void {
+    this.authToken = token;
+  }
+
+  getAuthToken(): string | null {
+    return this.authToken;
   }
 
   private async loadPersistedOtps(): Promise<void> {
@@ -60,10 +70,11 @@ class ApiService {
     const timeoutId = setTimeout(() => controller.abort(), API_CONFIG.timeoutMs);
 
     try {
-      const headers = {
+      const headers: Record<string, string> = {
         'Content-Type': 'application/json',
         Accept: 'application/json',
-        ...(options.headers || {}),
+        ...(this.authToken ? { Authorization: `Bearer ${this.authToken}` } : {}),
+        ...((options.headers as Record<string, string>) || {}),
       };
 
       const response = await fetch(url, {
@@ -133,33 +144,61 @@ class ApiService {
   }
 
   // ==========================================
-  // FASE 3: MOCK ENDPOINTS PER RBAC & OTP PAIRING
+  // AUTH & OTP PAIRING
   // ==========================================
 
-  /**
-   * Genera un codice OTP di 6 caratteri alfanumerici per il Trainer (POST /api/v1/auth/otp/generate)
-   */
+  async login(credentials: LoginCredentials): Promise<ApiResponse<AuthSession>> {
+    return this.post<AuthSession>('/api/v1/auth/login', credentials);
+  }
+
+  async provisionClient(data: {
+    first_name: string;
+    last_name: string;
+    notes?: string;
+    trainer_id?: string;
+    trainer_name?: string;
+  }): Promise<ApiResponse<ProvisionedClient>> {
+    return this.post<ProvisionedClient>('/api/v1/auth/provision', data);
+  }
+
+  async fetchProvisionedClients(): Promise<ApiResponse<ProvisionedClient[]>> {
+    return this.get<ProvisionedClient[]>('/api/v1/auth/provisioned-clients');
+  }
+
   async generateTrainerOtp(
     trainerId: string,
     trainerName: string
   ): Promise<ApiResponse<GenerateOtpResponseDto>> {
-    // Genera codice alfanumerico di 6 caratteri escludendo caratteri ambigui (0, O, 1, I)
+    // 1. Prova chiamata HTTP reale verso il server Fastify
+    const remoteRes = await this.post<GenerateOtpResponseDto>('/api/v1/auth/otp/generate', {
+      trainer_id: trainerId,
+      trainer_name: trainerName,
+    });
+
+    if (remoteRes.success && remoteRes.data) {
+      this.inMemoryOtps.set(remoteRes.data.code, {
+        code: remoteRes.data.code,
+        trainer_id: trainerId,
+        trainer_name: trainerName,
+        expires_at: remoteRes.data.expires_at,
+      });
+      await this.persistOtps();
+      return remoteRes;
+    }
+
+    // 2. Fallback offline locale
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     let code = '';
     for (let i = 0; i < 6; i++) {
       code += chars.charAt(Math.floor(Math.random() * chars.length));
     }
-
-    // Scadenza a 30 minuti da adesso
     const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
-
     const record: ActiveOtpRecord = {
       code,
       trainer_id: trainerId,
       trainer_name: trainerName,
       expires_at: expiresAt,
     };
-
     this.inMemoryOtps.set(code, record);
     await this.persistOtps();
 
@@ -175,48 +214,42 @@ class ApiService {
     };
   }
 
-  /**
-   * Collega un Cliente al Trainer verificando il codice OTP (POST /api/v1/auth/otp/verify-link)
-   */
   async linkClientWithOtp(
     dto: LinkClientRequestDto
   ): Promise<ApiResponse<LinkClientResponseDto>> {
-    const code = dto.otp_code.trim().toUpperCase();
+    // 1. Prova chiamata HTTP reale al backend
+    const remoteRes = await this.post<LinkClientResponseDto>('/api/v1/auth/otp/verify-link', dto);
+    if (remoteRes.success && remoteRes.data) {
+      return remoteRes;
+    }
 
-    // Supporta codici demo predefiniti per testing immediato
+    // 2. Fallback offline locale
+    const code = dto.otp_code.trim().toUpperCase();
     if (code === 'TRN892' || code === 'DEMO26') {
       return {
         success: true,
         data: {
           success: true,
-          trainer: {
-            id: 'trainer-marco-1',
-            name: 'Marco Rossi (Trainer)',
-          },
-          client: {
-            id: dto.client_id,
-            name: dto.client_name,
-          },
+          trainer: { id: 'trainer-marco-1', name: 'Marco Rossi (Trainer)' },
+          client: { id: dto.client_id, name: dto.client_name },
         },
         error: null,
       };
     }
 
     const record = this.inMemoryOtps.get(code);
-
     if (!record) {
       return {
         success: false,
         data: null,
         error: {
           code: 'OTP_INVALID',
-          message: 'Codice OTP non valido o inesistente. Ricontrolla il codice fornito dal Trainer.',
+          message: 'Codice OTP non valido o inesistente.',
         },
       };
     }
 
-    const now = Date.now();
-    if (new Date(record.expires_at).getTime() < now) {
+    if (new Date(record.expires_at).getTime() < Date.now()) {
       this.inMemoryOtps.delete(code);
       await this.persistOtps();
       return {
@@ -224,7 +257,7 @@ class ApiService {
         data: null,
         error: {
           code: 'OTP_EXPIRED',
-          message: 'Il codice OTP è scaduto. Richiedine uno nuovo al tuo Trainer.',
+          message: 'Il codice OTP è scaduto.',
         },
       };
     }
@@ -233,65 +266,132 @@ class ApiService {
       success: true,
       data: {
         success: true,
-        trainer: {
-          id: record.trainer_id,
-          name: record.trainer_name,
-        },
-        client: {
-          id: dto.client_id,
-          name: dto.client_name,
-        },
+        trainer: { id: record.trainer_id, name: record.trainer_name },
+        client: { id: dto.client_id, name: dto.client_name },
       },
       error: null,
     };
   }
 
-  /**
-   * Recupera schede filtrate per owner_id (GET /api/v1/routines?owner_id=...)
-   */
-  async fetchRoutinesByOwner(ownerId: string): Promise<ApiResponse<WorkoutRoutine[]>> {
+  // ==========================================
+  // ROUTINES (MASTER MESOCICLO)
+  // ==========================================
+
+  async fetchRoutinesByOwner(ownerId?: string): Promise<ApiResponse<WorkoutRoutine[]>> {
+    const path = ownerId ? `/api/v1/routines?owner_id=${encodeURIComponent(ownerId)}` : '/api/v1/routines';
+    const res = await this.get<WorkoutRoutine[]>(path);
+
+    if (res.success && res.data) {
+      return res;
+    }
+
+    // Fallback locale
     try {
       const allRoutines = await gymStorage.loadRoutines();
-      const filtered = allRoutines.filter((r) => r.owner_id === ownerId || (!r.owner_id && ownerId === 'trainer-1'));
-      return {
-        success: true,
-        data: filtered,
-        error: null,
-      };
+      const filtered = ownerId
+        ? allRoutines.filter((r) => r.owner_id === ownerId || (!r.owner_id && ownerId === 'trainer-1'))
+        : allRoutines;
+      return { success: true, data: filtered, error: null };
     } catch {
       return {
         success: false,
         data: null,
-        error: {
-          code: 'STORAGE_ERROR',
-          message: 'Errore durante il recupero delle schede.',
-        },
+        error: { code: 'STORAGE_ERROR', message: 'Errore lettura schede.' },
       };
     }
   }
 
-  /**
-   * Recupera cartelle filtrate per owner_id (GET /api/v1/folders?owner_id=...)
-   */
-  async fetchFoldersByOwner(ownerId: string): Promise<ApiResponse<RoutineFolder[]>> {
+  async createRoutine(routine: Omit<WorkoutRoutine, 'id' | 'created_at' | 'updated_at'>): Promise<ApiResponse<WorkoutRoutine>> {
+    return this.post<WorkoutRoutine>('/api/v1/routines', routine);
+  }
+
+  async deleteRoutine(id: number): Promise<ApiResponse<{ id: number; deleted: boolean }>> {
+    return this.delete<{ id: number; deleted: boolean }>(`/api/v1/routines/${id}`);
+  }
+
+  // ==========================================
+  // WORKOUTS (DECOUPLED SESSIONS)
+  // ==========================================
+
+  async fetchWorkoutsByOwner(ownerId?: string): Promise<ApiResponse<Workout[]>> {
+    const path = ownerId ? `/api/v1/workouts?owner_id=${encodeURIComponent(ownerId)}` : '/api/v1/workouts';
+    const res = await this.get<Workout[]>(path);
+
+    if (res.success && res.data) {
+      return res;
+    }
+
+    // Fallback locale
     try {
-      const allFolders = await gymStorage.loadFolders();
-      const filtered = allFolders.filter((f) => f.owner_id === ownerId || (!f.owner_id && ownerId === 'trainer-1'));
-      return {
-        success: true,
-        data: filtered,
-        error: null,
-      };
+      const allWorkouts = await gymStorage.loadWorkouts();
+      const filtered = ownerId
+        ? allWorkouts.filter((w) => w.owner_id === ownerId || (!w.owner_id && ownerId === 'trainer-1'))
+        : allWorkouts;
+      return { success: true, data: filtered, error: null };
     } catch {
       return {
         success: false,
         data: null,
-        error: {
-          code: 'STORAGE_ERROR',
-          message: 'Errore durante il recupero delle cartelle.',
-        },
+        error: { code: 'STORAGE_ERROR', message: 'Errore lettura sessioni.' },
       };
     }
+  }
+
+  async saveWorkout(workout: Omit<Workout, 'id' | 'created_at' | 'updated_at'>): Promise<ApiResponse<Workout>> {
+    return this.post<Workout>('/api/v1/workouts', workout);
+  }
+
+  async deleteWorkout(id: number): Promise<ApiResponse<{ id: number; deleted: boolean }>> {
+    return this.delete<{ id: number; deleted: boolean }>(`/api/v1/workouts/${id}`);
+  }
+
+  // ==========================================
+  // FOLDERS
+  // ==========================================
+
+  async fetchFoldersByOwner(ownerId?: string): Promise<ApiResponse<RoutineFolder[]>> {
+    const path = ownerId ? `/api/v1/folders?owner_id=${encodeURIComponent(ownerId)}` : '/api/v1/folders';
+    const res = await this.get<RoutineFolder[]>(path);
+
+    if (res.success && res.data) {
+      return res;
+    }
+
+    // Fallback locale
+    try {
+      const allFolders = await gymStorage.loadFolders();
+      const filtered = ownerId
+        ? allFolders.filter((f) => f.owner_id === ownerId || (!f.owner_id && ownerId === 'trainer-1'))
+        : allFolders;
+      return { success: true, data: filtered, error: null };
+    } catch {
+      return {
+        success: false,
+        data: null,
+        error: { code: 'STORAGE_ERROR', message: 'Errore lettura cartelle.' },
+      };
+    }
+  }
+
+  async createFolder(name: string, ownerId?: string): Promise<ApiResponse<RoutineFolder>> {
+    return this.post<RoutineFolder>('/api/v1/folders', { name, owner_id: ownerId });
+  }
+
+  async deleteFolder(id: string): Promise<ApiResponse<{ id: string; deleted: boolean }>> {
+    return this.delete<{ id: string; deleted: boolean }>(`/api/v1/folders/${id}`);
+  }
+
+  // ==========================================
+  // EXERCISES CATALOG
+  // ==========================================
+
+  async fetchExercises(): Promise<ApiResponse<Exercise[]>> {
+    const res = await this.get<Exercise[]>('/api/v1/exercises');
+    if (res.success && res.data && res.data.length > 0) {
+      return res;
+    }
+    const local = await gymStorage.loadExercises();
+    return { success: true, data: local, error: null };
   }
 }
 
