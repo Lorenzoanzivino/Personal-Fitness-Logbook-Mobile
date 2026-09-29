@@ -12,7 +12,7 @@ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RootStackParamList, RootStackNavigationProp } from '../../types/navigation';
 import { useGym } from '../../context/GymContext';
-import { RoutineExercise, SetType, BandAssistance, ExerciseType, SetDropStep } from '../../types/workout';
+import { RoutineExercise, RoutineBlock, RoutineBlockType, SetType, BandAssistance, ExerciseType, SetDropStep } from '../../types/workout';
 import { colors } from '../../theme/colors';
 import { layout } from '../../theme/spacing';
 import { typography } from '../../theme/typography';
@@ -66,6 +66,7 @@ interface BuilderSetState {
   bandAssistance: BandAssistance;
   dropsetWeightKg?: number | null;
   drops?: BuilderDropState[];
+  dropPercentage?: number | null;
   restSeconds: number;
   notes?: string;
 }
@@ -74,6 +75,11 @@ interface BuilderExerciseState {
   tempId: string;
   exerciseId: number;
   exerciseOrder: number;
+  blockType?: RoutineBlockType;
+  blockId?: string;
+  circuitRounds?: number;
+  circuitRestBetweenRounds?: number;
+  intraRestSeconds?: number;
   supersetGroup: string | null;
   customDescription?: string;
   customVideoUrl?: string;
@@ -130,6 +136,27 @@ export const NewRoutineModal: React.FC = () => {
     });
   };
 
+  // Accordion collapsed block IDs (Circuit or Superset)
+  const [collapsedBlockIds, setCollapsedBlockIds] = useState<Set<string>>(new Set());
+
+  const toggleBlockCollapse = (blockKey: string) => {
+    setCollapsedBlockIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(blockKey)) {
+        next.delete(blockKey);
+      } else {
+        next.add(blockKey);
+      }
+      return next;
+    });
+  };
+
+  // Hidden Note / Video section exercise IDs (opt-out)
+  const [hiddenNotesExIds, setHiddenNotesExIds] = useState<Set<string>>(new Set());
+
+  // Target Circuit Block ID when adding an exercise directly to a specific circuit
+  const [targetCircuitBlockId, setTargetCircuitBlockId] = useState<string | null>(null);
+
   // Video modal preview state
   const [activeVideoModal, setActiveVideoModal] = useState<{
     visible: boolean;
@@ -143,7 +170,7 @@ export const NewRoutineModal: React.FC = () => {
 
   // Dialog Add Exercise: Choice (Single vs Super Serie)
   const [showAddChoiceModal, setShowAddChoiceModal] = useState(false);
-  const [pickerMode, setPickerMode] = useState<'single' | 'superset'>('single');
+  const [pickerMode, setPickerMode] = useState<'single' | 'superset' | 'circuit'>('single');
   const [showExercisePicker, setShowExercisePicker] = useState(false);
   const [selectedSupersetExerciseIds, setSelectedSupersetExerciseIds] = useState<number[]>([]);
   const [filterMuscle, setFilterMuscle] = useState<string>('Tutti');
@@ -182,48 +209,107 @@ export const NewRoutineModal: React.FC = () => {
         setSelectedBorderColor(existingRoutine.border_color);
       }
 
-      if (existingRoutine.exercises) {
+      const mapSetsToBuilder = (sets: any[]) => {
+        return (sets || []).map((s, sIdx) => {
+          let loadedDrops: BuilderDropState[] | undefined = undefined;
+          if (s.drops && s.drops.length > 0) {
+            loadedDrops = s.drops.map((d: any, dIdx: number) => ({
+              id: d.id || `d-${dIdx}-${Date.now()}`,
+              kg: d.kg || 0,
+              reps: d.reps || 10,
+              restSeconds: d.rest_seconds ?? (s.set_type === 'rest_pause' ? 10 : 0),
+            }));
+          } else if (s.set_type === 'dropset') {
+            loadedDrops = [
+              { id: `d-1-${sIdx}`, kg: s.target_weight_kg || 0, reps: s.target_reps || 10, restSeconds: 0 },
+              { id: `d-2-${sIdx}`, kg: s.dropset_weight_kg || 0, reps: s.target_reps || 10, restSeconds: 0 },
+            ];
+          } else if (s.set_type === 'rest_pause') {
+            loadedDrops = [
+              { id: `rp-1-${sIdx}`, kg: s.target_weight_kg || 0, reps: s.target_reps || 10, restSeconds: 10 },
+              { id: `rp-2-${sIdx}`, kg: s.target_weight_kg || 0, reps: 10, restSeconds: 10 },
+            ];
+          }
+
+          return {
+            setNumber: s.set_number,
+            setType: s.set_type || 'normal',
+            targetWeightKg: s.target_weight_kg || 0,
+            targetReps: s.target_reps || 10,
+            targetTimeSeconds: s.target_time_seconds || 60,
+            bandAssistance: s.band_assistance || 'none',
+            dropsetWeightKg: s.dropset_weight_kg || 0,
+            drops: loadedDrops,
+            dropPercentage: s.drop_percentage ?? (s.set_type === 'dropset' ? 20 : null),
+            restSeconds: s.rest_seconds || 90,
+            notes: s.notes || undefined,
+          };
+        });
+      };
+
+      if (existingRoutine.blocks && existingRoutine.blocks.length > 0) {
+        const loaded: BuilderExerciseState[] = [];
+        let orderCounter = 1;
+
+        existingRoutine.blocks.forEach((blk, bIdx) => {
+          const blkId = `blk-${blk.id || bIdx}-${Date.now()}`;
+          const bType: RoutineBlockType = blk.block_type || 'STANDARD';
+          const rounds = bType === 'CIRCUIT' ? (blk.rounds || 3) : 1;
+          const restBetweenRounds = bType === 'CIRCUIT' ? (blk.rest_between_rounds ?? 60) : 0;
+
+          (blk.exercises || []).forEach((re, reIdx) => {
+            const intraRest = re.intra_rest_seconds ?? (bType === 'CIRCUIT' ? 15 : 0);
+            loaded.push({
+              tempId: `re-${re.exercise_id}-${bIdx}-${reIdx}-${Date.now()}`,
+              exerciseId: re.exercise_id,
+              exerciseOrder: orderCounter++,
+              blockType: bType,
+              blockId: blkId,
+              circuitRounds: rounds,
+              circuitRestBetweenRounds: restBetweenRounds,
+              intraRestSeconds: intraRest,
+              supersetGroup: re.superset_group || (bType === 'SUPERSET' ? 'A' : null),
+              customDescription: re.custom_description || undefined,
+              customVideoUrl: re.custom_video_url || undefined,
+              sets: (() => {
+                const mapped = mapSetsToBuilder(re.sets);
+                if (bType === 'CIRCUIT') {
+                  if (mapped.length === 0) {
+                    return [
+                      {
+                        setNumber: 1,
+                        setType: 'normal',
+                        targetWeightKg: 0,
+                        targetReps: 10,
+                        targetTimeSeconds: 60,
+                        bandAssistance: 'none',
+                        dropsetWeightKg: null,
+                        restSeconds: 0,
+                      },
+                    ];
+                  }
+                  return mapped.slice(0, 1);
+                }
+                return mapped;
+              })(),
+            });
+          });
+        });
+        setRoutineExercises(loaded);
+      } else if (existingRoutine.exercises) {
         const loaded: BuilderExerciseState[] = existingRoutine.exercises.map((re, idx) => ({
           tempId: `re-${re.exercise_id}-${idx}-${Date.now()}`,
           exerciseId: re.exercise_id,
           exerciseOrder: re.exercise_order || idx + 1,
+          blockType: re.superset_group ? 'SUPERSET' : 'STANDARD',
+          blockId: re.superset_group ? `blk-ss-${re.superset_group}` : `blk-std-${idx}`,
+          circuitRounds: 1,
+          circuitRestBetweenRounds: 0,
+          intraRestSeconds: re.intra_rest_seconds ?? 0,
           supersetGroup: re.superset_group || null,
           customDescription: re.custom_description || undefined,
           customVideoUrl: re.custom_video_url || undefined,
-          sets: (re.sets || []).map((s, sIdx) => {
-            let loadedDrops: BuilderDropState[] | undefined = undefined;
-            if (s.drops && s.drops.length > 0) {
-              loadedDrops = s.drops.map((d, dIdx) => ({
-                id: d.id || `d-${dIdx}-${Date.now()}`,
-                kg: d.kg || 0,
-                reps: d.reps || 10,
-                restSeconds: d.rest_seconds ?? (s.set_type === 'rest_pause' ? 10 : 0),
-              }));
-            } else if (s.set_type === 'dropset') {
-              loadedDrops = [
-                { id: `d-1-${sIdx}`, kg: s.target_weight_kg || 0, reps: s.target_reps || 10, restSeconds: 0 },
-                { id: `d-2-${sIdx}`, kg: s.dropset_weight_kg || 0, reps: s.target_reps || 10, restSeconds: 0 },
-              ];
-            } else if (s.set_type === 'rest_pause') {
-              loadedDrops = [
-                { id: `rp-1-${sIdx}`, kg: s.target_weight_kg || 0, reps: s.target_reps || 10, restSeconds: 10 },
-                { id: `rp-2-${sIdx}`, kg: s.target_weight_kg || 0, reps: 10, restSeconds: 10 },
-              ];
-            }
-
-            return {
-              setNumber: s.set_number,
-              setType: s.set_type || 'normal',
-              targetWeightKg: s.target_weight_kg || 0,
-              targetReps: s.target_reps || 10,
-              targetTimeSeconds: s.target_time_seconds || 60,
-              bandAssistance: s.band_assistance || 'none',
-              dropsetWeightKg: s.dropset_weight_kg || 0,
-              drops: loadedDrops,
-              restSeconds: s.rest_seconds || 90,
-              notes: s.notes || undefined,
-            };
-          }),
+          sets: mapSetsToBuilder(re.sets),
         }));
         setRoutineExercises(loaded);
       }
@@ -274,10 +360,17 @@ export const NewRoutineModal: React.FC = () => {
 
   // Handle Choice Modal
   const handleOpenAddChoice = () => {
+    setTargetCircuitBlockId(null);
     setShowAddChoiceModal(true);
   };
 
-  const handleSelectAddType = (mode: 'single' | 'superset') => {
+  const handleOpenAddCircuitExercise = (blockId: string) => {
+    setTargetCircuitBlockId(blockId);
+    setPickerMode('single');
+    setShowExercisePicker(true);
+  };
+
+  const handleSelectAddType = (mode: 'single' | 'superset' | 'circuit') => {
     setShowAddChoiceModal(false);
     setPickerMode(mode);
     setSelectedSupersetExerciseIds([]);
@@ -297,20 +390,87 @@ export const NewRoutineModal: React.FC = () => {
     return 'Z';
   };
 
-  // Handle Exercise Selection
+  // Handle Exercise Selection (Appends strictly to end of routine or to targeted circuit block)
   const handleSelectSingleExercise = (exerciseId: number) => {
     setShowExercisePicker(false);
-    // Nasce con 0 serie!
-    setRoutineExercises([
-      ...routineExercises,
-      {
+
+    if (targetCircuitBlockId) {
+      const circuitExercises = routineExercises.filter((re) => re.blockId === targetCircuitBlockId);
+      const circuitRounds = circuitExercises[0]?.circuitRounds || 3;
+      const circuitRestBetweenRounds = circuitExercises[0]?.circuitRestBetweenRounds ?? 60;
+      const exInfo = exercises.find((e) => e.id === exerciseId);
+      const isTime = exInfo?.exercise_type === 'time';
+
+      const newCircuitEx: BuilderExerciseState = {
         tempId: `re-${exerciseId}-${Date.now()}`,
         exerciseId,
         exerciseOrder: routineExercises.length + 1,
+        blockType: 'CIRCUIT',
+        blockId: targetCircuitBlockId,
+        circuitRounds,
+        circuitRestBetweenRounds,
+        intraRestSeconds: 15,
         supersetGroup: null,
-        sets: [], // 0 serie iniziali
-      },
-    ]);
+        sets: [
+          {
+            setNumber: 1,
+            setType: 'normal',
+            targetWeightKg: 0,
+            targetReps: isTime ? 0 : 10,
+            targetTimeSeconds: isTime ? 60 : null,
+            bandAssistance: 'none',
+            dropsetWeightKg: null,
+            restSeconds: 15,
+          },
+        ],
+      };
+
+      // Insert directly after the last exercise of this circuit block
+      let lastCircuitIdx = -1;
+      for (let i = routineExercises.length - 1; i >= 0; i--) {
+        if (routineExercises[i].blockId === targetCircuitBlockId) {
+          lastCircuitIdx = i;
+          break;
+        }
+      }
+
+      const updated = [...routineExercises];
+      if (lastCircuitIdx !== -1) {
+        updated.splice(lastCircuitIdx + 1, 0, newCircuitEx);
+      } else {
+        updated.push(newCircuitEx);
+      }
+
+      updated.forEach((e, idx) => {
+        e.exerciseOrder = idx + 1;
+      });
+
+      setRoutineExercises(updated);
+      setTargetCircuitBlockId(null);
+      showToast('success', 'Esercizio aggiunto al circuito!');
+      return;
+    }
+
+    const stdBlockId = `blk-std-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+    const newEx: BuilderExerciseState = {
+      tempId: `re-${exerciseId}-${Date.now()}`,
+      exerciseId,
+      exerciseOrder: routineExercises.length + 1,
+      blockType: 'STANDARD',
+      blockId: stdBlockId,
+      circuitRounds: 1,
+      circuitRestBetweenRounds: 0,
+      intraRestSeconds: 0,
+      supersetGroup: null,
+      sets: [], // 0 serie iniziali
+    };
+
+    const updated = [...routineExercises, newEx];
+    updated.forEach((e, idx) => {
+      e.exerciseOrder = idx + 1;
+    });
+
+    setRoutineExercises(updated);
   };
 
   const handleToggleSupersetSelection = (exerciseId: number) => {
@@ -328,10 +488,16 @@ export const NewRoutineModal: React.FC = () => {
     }
 
     const groupLetter = getNextSupersetGroupLetter();
+    const supersetBlockId = `blk-ss-${groupLetter}-${Date.now()}`;
     const newItems: BuilderExerciseState[] = selectedSupersetExerciseIds.map((exId, idx) => ({
       tempId: `re-${exId}-${Date.now()}-${idx}`,
       exerciseId: exId,
       exerciseOrder: routineExercises.length + idx + 1,
+      blockType: 'SUPERSET',
+      blockId: supersetBlockId,
+      circuitRounds: 1,
+      circuitRestBetweenRounds: 0,
+      intraRestSeconds: 0,
       supersetGroup: groupLetter,
       sets: [], // Nascono con 0 serie
     }));
@@ -340,6 +506,61 @@ export const NewRoutineModal: React.FC = () => {
     setShowExercisePicker(false);
     setSelectedSupersetExerciseIds([]);
     showToast('success', `Super Serie ${groupLetter} aggiunta (${newItems.length} esercizi)!`);
+  };
+
+  const handleConfirmCircuitSelection = () => {
+    if (selectedSupersetExerciseIds.length < 2) {
+      showToast('error', 'Seleziona almeno 2 esercizi per creare un Circuito.');
+      return;
+    }
+
+    const circuitBlockId = `blk-circuit-${Date.now()}`;
+    const newItems: BuilderExerciseState[] = selectedSupersetExerciseIds.map((exId, idx) => {
+      const exInfo = exercises.find((e) => e.id === exId);
+      const isTime = exInfo?.exercise_type === 'time';
+      return {
+        tempId: `re-${exId}-${Date.now()}-${idx}`,
+        exerciseId: exId,
+        exerciseOrder: routineExercises.length + idx + 1,
+        blockType: 'CIRCUIT',
+        blockId: circuitBlockId,
+        circuitRounds: 3,
+        circuitRestBetweenRounds: 60,
+        intraRestSeconds: 15,
+        supersetGroup: null,
+        sets: [
+          {
+            setNumber: 1,
+            setType: 'normal',
+            targetWeightKg: 0,
+            targetReps: isTime ? 0 : 10,
+            targetTimeSeconds: isTime ? 60 : null,
+            bandAssistance: 'none',
+            dropsetWeightKg: null,
+            restSeconds: 15,
+          },
+        ],
+      };
+    });
+
+    setRoutineExercises([...routineExercises, ...newItems]);
+    setShowExercisePicker(false);
+    setSelectedSupersetExerciseIds([]);
+    showToast('success', `Circuito creato (${newItems.length} esercizi • 3 Giri)!`);
+  };
+
+  const updateCircuitRounds = (blockId: string, rounds: number) => {
+    const updated = routineExercises.map((re) =>
+      re.blockId === blockId ? { ...re, circuitRounds: Math.max(1, rounds) } : re
+    );
+    setRoutineExercises(updated);
+  };
+
+  const updateCircuitRest = (blockId: string, restSecs: number) => {
+    const updated = routineExercises.map((re) =>
+      re.blockId === blockId ? { ...re, circuitRestBetweenRounds: Math.max(0, restSecs) } : re
+    );
+    setRoutineExercises(updated);
   };
 
   const handleRemoveExercise = (index: number) => {
@@ -353,6 +574,10 @@ export const NewRoutineModal: React.FC = () => {
 
   // Add Set with SetType choice
   const handleOpenAddSet = (exIndex: number) => {
+    if (routineExercises[exIndex]?.blockType === 'CIRCUIT') {
+      showToast('info', 'Nei circuiti il numero di serie coincide con i giri configurati.');
+      return;
+    }
     setSetTypeModalExerciseIdx(exIndex);
   };
 
@@ -360,6 +585,11 @@ export const NewRoutineModal: React.FC = () => {
     if (setTypeModalExerciseIdx === null) return;
     const exIdx = setTypeModalExerciseIdx;
     setSetTypeModalExerciseIdx(null);
+
+    if (routineExercises[exIdx]?.blockType === 'CIRCUIT') {
+      showToast('info', 'Nei circuiti il numero di serie coincide con i giri configurati.');
+      return;
+    }
 
     const updated = [...routineExercises];
     const exInfo = exercises.find((e) => e.id === updated[exIdx].exerciseId);
@@ -390,6 +620,7 @@ export const NewRoutineModal: React.FC = () => {
       bandAssistance: 'none',
       dropsetWeightKg: null,
       drops: initialDrops,
+      dropPercentage: type === 'dropset' ? 20 : null,
       restSeconds: 90,
     };
 
@@ -398,6 +629,10 @@ export const NewRoutineModal: React.FC = () => {
   };
 
   const handleRemoveSet = (exIndex: number, setIndex: number) => {
+    if (routineExercises[exIndex]?.blockType === 'CIRCUIT') {
+      showToast('info', 'La serie base di un esercizio a circuito non può essere eliminata.');
+      return;
+    }
     const updated = [...routineExercises];
     updated[exIndex].sets.splice(setIndex, 1);
     updated[exIndex].sets.forEach((s, idx) => {
@@ -415,10 +650,14 @@ export const NewRoutineModal: React.FC = () => {
     }
     const lastDrop = set.drops[set.drops.length - 1];
     const dropNumber = set.drops.length + 1;
+    const dropPct = set.dropPercentage != null && set.dropPercentage > 0 ? set.dropPercentage : 20;
+    const calculatedKg = lastDrop && set.setType === 'dropset'
+      ? Math.max(0, Math.round(lastDrop.kg * (1 - dropPct / 100) * 10) / 10)
+      : (lastDrop ? Math.max(0, Math.round(lastDrop.kg * 0.8)) : 0);
 
     set.drops.push({
       id: `drop-${Date.now()}-${dropNumber}`,
-      kg: lastDrop ? Math.max(0, Math.round(lastDrop.kg * 0.8)) : 0,
+      kg: calculatedKg,
       reps: lastDrop ? lastDrop.reps : 10,
       restSeconds: set.setType === 'rest_pause' ? 10 : 0,
     });
@@ -511,9 +750,79 @@ export const NewRoutineModal: React.FC = () => {
             band_assistance: s.bandAssistance,
             dropset_weight_kg: s.dropsetWeightKg || null,
             drops: mappedDrops,
+            drop_percentage: s.dropPercentage ?? (s.setType === 'dropset' ? 20 : null),
             rest_seconds: s.restSeconds,
           };
         }),
+      };
+    });
+
+    // Group exercises into blocks
+    const blocksMap = new Map<string, BuilderExerciseState[]>();
+    const blockIds: string[] = [];
+
+    routineExercises.forEach((re) => {
+      const bId = re.blockId || (re.supersetGroup ? `blk-ss-${re.supersetGroup}` : `blk-std-${re.tempId}`);
+      if (!blocksMap.has(bId)) {
+        blocksMap.set(bId, []);
+        blockIds.push(bId);
+      }
+      blocksMap.get(bId)!.push(re);
+    });
+
+    const mappedBlocks: RoutineBlock[] = blockIds.map((bId, bIdx) => {
+      const exList = blocksMap.get(bId)!;
+      const first = exList[0];
+      const bType: RoutineBlockType = first.blockType || (first.supersetGroup ? 'SUPERSET' : 'STANDARD');
+      const rounds = bType === 'CIRCUIT' ? (first.circuitRounds || 3) : 1;
+      const restBetweenRounds = bType === 'CIRCUIT' ? (first.circuitRestBetweenRounds ?? 60) : 0;
+
+      const blockExs: RoutineExercise[] = exList.map((re, exIdxInBlock) => {
+        const foundEx = exercises.find((e) => e.id === re.exerciseId);
+        return {
+          routine_id: routineId || 0,
+          exercise_id: re.exerciseId,
+          exercise_order: exIdxInBlock + 1,
+          intra_rest_seconds: bType === 'CIRCUIT' ? (re.intraRestSeconds ?? 15) : 0,
+          superset_group: re.supersetGroup || (bType === 'SUPERSET' ? 'A' : null),
+          custom_description: re.customDescription?.trim() || null,
+          custom_video_url: re.customVideoUrl?.trim() || null,
+          exercise: foundEx,
+          sets: re.sets.map((s) => {
+            let mappedDrops: SetDropStep[] | undefined = undefined;
+            if (s.drops && s.drops.length > 0) {
+              mappedDrops = s.drops.map((d) => ({
+                id: d.id,
+                kg: d.kg,
+                reps: d.reps,
+                rest_seconds: d.restSeconds,
+              }));
+            }
+
+            return {
+              routine_exercise_id: 0,
+              set_number: s.setNumber,
+              set_type: s.setType,
+              target_weight_kg: s.targetWeightKg,
+              target_reps: s.targetReps,
+              target_time_seconds: s.targetTimeSeconds || null,
+              band_assistance: s.bandAssistance,
+              dropset_weight_kg: s.dropsetWeightKg || null,
+              drops: mappedDrops,
+              drop_percentage: s.dropPercentage ?? (s.setType === 'dropset' ? 20 : null),
+              rest_seconds: s.restSeconds,
+            };
+          }),
+        };
+      });
+
+      return {
+        routine_id: routineId || 0,
+        block_type: bType,
+        order_index: bIdx + 1,
+        rounds,
+        rest_between_rounds: restBetweenRounds,
+        exercises: blockExs,
       };
     });
 
@@ -527,6 +836,7 @@ export const NewRoutineModal: React.FC = () => {
           description: description.trim() || null,
           workout_type: workoutType,
           duration_weeks: weeks,
+          blocks: mappedBlocks,
           exercises: mappedExercises,
         });
 
@@ -541,6 +851,7 @@ export const NewRoutineModal: React.FC = () => {
           description: description.trim() || null,
           workout_type: workoutType,
           duration_weeks: weeks,
+          blocks: mappedBlocks,
           exercises: mappedExercises,
         });
 
@@ -806,66 +1117,328 @@ export const NewRoutineModal: React.FC = () => {
             const exName = exInfo ? exInfo.name : `Esercizio ${re.exerciseId}`;
             const exType: ExerciseType = exInfo?.exercise_type || 'reps';
             const muscle = exInfo ? exInfo.muscle_group : '';
+            const isCircuit = re.blockType === 'CIRCUIT';
+            const circuitBlockKey = re.blockId || `blk-circuit-${re.exerciseOrder}`;
+            const isCircuitCollapsed = isCircuit && collapsedBlockIds.has(circuitBlockKey);
 
-            return (
-              <Card
-                key={re.tempId}
-                style={[
-                  styles.exCard,
-                  re.supersetGroup ? styles.supersetCardBorder : null,
-                ]}
-              >
-                <View style={styles.exHeader}>
-                  {/* Reordering Controls (▲ / ▼) */}
-                  <View style={styles.reorderCol}>
+            const isSuperset = (re.blockType === 'SUPERSET' || Boolean(re.supersetGroup)) && !isCircuit;
+            const supersetBlockKey = re.blockId || `blk-ss-${re.supersetGroup || 'default'}`;
+            const isSupersetCollapsed = isSuperset && collapsedBlockIds.has(supersetBlockKey);
+
+            const isFirstInCircuit =
+              isCircuit &&
+              (exIdx === 0 || routineExercises[exIdx - 1].blockId !== re.blockId);
+
+            const isLastInCircuit =
+              isCircuit &&
+              (exIdx === routineExercises.length - 1 || routineExercises[exIdx + 1].blockId !== re.blockId);
+
+            const isFirstInSuperset =
+              isSuperset &&
+              (exIdx === 0 ||
+                routineExercises[exIdx - 1].blockId !== re.blockId ||
+                routineExercises[exIdx - 1].supersetGroup !== re.supersetGroup);
+
+            const circuitExercises = isCircuit
+              ? routineExercises.filter((e) => e.blockId === re.blockId)
+              : [];
+            const supersetExercises = isSuperset
+              ? routineExercises.filter((e) => (re.blockId ? e.blockId === re.blockId : e.supersetGroup === re.supersetGroup))
+              : [];
+
+            // If circuit block is collapsed, only render block banner once, then hide individual exercises
+            if (isCircuit && isCircuitCollapsed) {
+              if (!isFirstInCircuit) return null;
+              return (
+                <React.Fragment key={re.tempId}>
+                  <View style={styles.circuitBlockBanner}>
+                    <View style={styles.circuitBlockHeaderRow}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.circuitBlockTitle}>🔄 BLOCCO CIRCUITO</Text>
+                      </View>
+                      <View style={styles.circuitSettingsRow}>
+                        <View style={styles.circuitSettingItem}>
+                          <Text style={styles.circuitSettingLabel}>Giri:</Text>
+                          <Pressable
+                            onPress={() =>
+                              updateCircuitRounds(
+                                re.blockId!,
+                                Math.max(1, (re.circuitRounds || 3) - 1)
+                              )
+                            }
+                            style={styles.circuitStepperBtn}
+                          >
+                            <Text style={styles.circuitStepperText}>-</Text>
+                          </Pressable>
+                          <Text style={styles.circuitSettingValue}>
+                            {re.circuitRounds || 3}
+                          </Text>
+                          <Pressable
+                            onPress={() =>
+                              updateCircuitRounds(
+                                re.blockId!,
+                                (re.circuitRounds || 3) + 1
+                              )
+                            }
+                            style={styles.circuitStepperBtn}
+                          >
+                            <Text style={styles.circuitStepperText}>+</Text>
+                          </Pressable>
+                        </View>
+
+                        <View style={styles.circuitSettingItem}>
+                          <Text style={styles.circuitSettingLabel}>Rec. Fine:</Text>
+                          <Pressable
+                            onPress={() =>
+                              updateCircuitRest(
+                                re.blockId!,
+                                Math.max(0, (re.circuitRestBetweenRounds ?? 60) - 15)
+                              )
+                            }
+                            style={styles.circuitStepperBtn}
+                          >
+                            <Text style={styles.circuitStepperText}>-15</Text>
+                          </Pressable>
+                          <Text style={styles.circuitSettingValue}>
+                            {re.circuitRestBetweenRounds ?? 60}s
+                          </Text>
+                          <Pressable
+                            onPress={() =>
+                              updateCircuitRest(
+                                re.blockId!,
+                                (re.circuitRestBetweenRounds ?? 60) + 15
+                              )
+                            }
+                            style={styles.circuitStepperBtn}
+                          >
+                            <Text style={styles.circuitStepperText}>+15</Text>
+                          </Pressable>
+                        </View>
+
+                        <Pressable
+                          onPress={() => toggleBlockCollapse(circuitBlockKey)}
+                          style={styles.blockCollapseBtn}
+                          accessibilityRole="button"
+                          accessibilityLabel="Espandi blocco circuito"
+                        >
+                          <Text style={styles.blockCollapseBtnText}>▼ Espandi</Text>
+                        </Pressable>
+                      </View>
+                    </View>
                     <Pressable
-                      onPress={() => handleMoveUp(exIdx)}
-                      disabled={exIdx === 0}
-                      style={[styles.arrowBtn, exIdx === 0 && styles.arrowBtnDisabled]}
+                      onPress={() => toggleBlockCollapse(circuitBlockKey)}
+                      style={styles.collapsedBlockSummary}
                     >
-                      <Text style={[styles.arrowText, exIdx === 0 && styles.arrowTextDisabled]}>▲</Text>
-                    </Pressable>
-                    <Pressable
-                      onPress={() => handleMoveDown(exIdx)}
-                      disabled={exIdx === routineExercises.length - 1}
-                      style={[
-                        styles.arrowBtn,
-                        exIdx === routineExercises.length - 1 && styles.arrowBtnDisabled,
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.arrowText,
-                          exIdx === routineExercises.length - 1 && styles.arrowTextDisabled,
-                        ]}
-                      >
-                        ▼
+                      <Text style={styles.collapsedBlockSummaryText}>
+                        📦 Blocco Circuito ({circuitExercises.length} esercizi • {re.circuitRounds || 3} Giri • Rec. {re.circuitRestBetweenRounds ?? 60}s) • Tocca per espandere
                       </Text>
                     </Pressable>
                   </View>
+                </React.Fragment>
+              );
+            }
 
-                  <View style={{ flex: 1, marginLeft: 8 }}>
-                    {re.supersetGroup && (
-                      <View style={styles.supersetTag}>
-                        <Text style={styles.supersetTagText}>
-                          ⚡ SUPER SERIE {re.supersetGroup}
+            // If superset block is collapsed, only render block banner once, then hide individual exercises
+            if (isSuperset && isSupersetCollapsed) {
+              if (!isFirstInSuperset) return null;
+              return (
+                <React.Fragment key={re.tempId}>
+                  <View style={styles.supersetBlockBanner}>
+                    <View style={styles.circuitBlockHeaderRow}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.circuitBlockTitle, { color: '#3B82F6' }]}>
+                          ⚡ BLOCCO SUPER SERIE {re.supersetGroup || ''}
                         </Text>
                       </View>
-                    )}
-                    <Text style={typography.bodyBold}>
-                      {re.exerciseOrder}. {exName}
-                    </Text>
-                    <Text style={typography.caption}>
-                      {muscle} • Tipo:{' '}
-                      <Text style={{ color: colors.accent, fontWeight: '700' }}>
-                        {exType === 'reps'
-                          ? 'CARICO + REPS'
-                          : exType === 'time'
-                          ? 'ISOMETRIA (TEMPO)'
-                          : 'CORPO LIBERO'}
+                      <Pressable
+                        onPress={() => toggleBlockCollapse(supersetBlockKey)}
+                        style={styles.blockCollapseBtn}
+                        accessibilityRole="button"
+                        accessibilityLabel="Espandi blocco super serie"
+                      >
+                        <Text style={styles.blockCollapseBtnText}>▼ Espandi</Text>
+                      </Pressable>
+                    </View>
+                    <Pressable
+                      onPress={() => toggleBlockCollapse(supersetBlockKey)}
+                      style={styles.collapsedBlockSummary}
+                    >
+                      <Text style={styles.collapsedBlockSummaryText}>
+                        📦 Blocco Super Serie {re.supersetGroup || ''} ({supersetExercises.length} esercizi) • Tocca per espandere
                       </Text>
-                    </Text>
+                    </Pressable>
                   </View>
+                </React.Fragment>
+              );
+            }
+
+            return (
+              <React.Fragment key={re.tempId}>
+                {isFirstInCircuit && (
+                  <View style={styles.circuitBlockBanner}>
+                    <View style={styles.circuitBlockHeaderRow}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.circuitBlockTitle}>🔄 BLOCCO CIRCUITO</Text>
+                      </View>
+                      <View style={styles.circuitSettingsRow}>
+                        <View style={styles.circuitSettingItem}>
+                          <Text style={styles.circuitSettingLabel}>Giri:</Text>
+                          <Pressable
+                            onPress={() =>
+                              updateCircuitRounds(
+                                re.blockId!,
+                                Math.max(1, (re.circuitRounds || 3) - 1)
+                              )
+                            }
+                            style={styles.circuitStepperBtn}
+                          >
+                            <Text style={styles.circuitStepperText}>-</Text>
+                          </Pressable>
+                          <Text style={styles.circuitSettingValue}>
+                            {re.circuitRounds || 3}
+                          </Text>
+                          <Pressable
+                            onPress={() =>
+                              updateCircuitRounds(
+                                re.blockId!,
+                                (re.circuitRounds || 3) + 1
+                              )
+                            }
+                            style={styles.circuitStepperBtn}
+                          >
+                            <Text style={styles.circuitStepperText}>+</Text>
+                          </Pressable>
+                        </View>
+
+                        <View style={styles.circuitSettingItem}>
+                          <Text style={styles.circuitSettingLabel}>Rec. Fine:</Text>
+                          <Pressable
+                            onPress={() =>
+                              updateCircuitRest(
+                                re.blockId!,
+                                Math.max(0, (re.circuitRestBetweenRounds ?? 60) - 15)
+                              )
+                            }
+                            style={styles.circuitStepperBtn}
+                          >
+                            <Text style={styles.circuitStepperText}>-15</Text>
+                          </Pressable>
+                          <Text style={styles.circuitSettingValue}>
+                            {re.circuitRestBetweenRounds ?? 60}s
+                          </Text>
+                          <Pressable
+                            onPress={() =>
+                              updateCircuitRest(
+                                re.blockId!,
+                                (re.circuitRestBetweenRounds ?? 60) + 15
+                              )
+                            }
+                            style={styles.circuitStepperBtn}
+                          >
+                            <Text style={styles.circuitStepperText}>+15</Text>
+                          </Pressable>
+                        </View>
+
+                        <Pressable
+                          onPress={() => toggleBlockCollapse(circuitBlockKey)}
+                          style={styles.blockCollapseBtn}
+                          accessibilityRole="button"
+                          accessibilityLabel="Riduci blocco circuito"
+                        >
+                          <Text style={styles.blockCollapseBtnText}>▲ Riduci</Text>
+                        </Pressable>
+                      </View>
+                    </View>
+                  </View>
+                )}
+
+                {isFirstInSuperset && (
+                  <View style={styles.supersetBlockBanner}>
+                    <View style={styles.circuitBlockHeaderRow}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.circuitBlockTitle, { color: '#3B82F6' }]}>
+                          ⚡ BLOCCO SUPER SERIE {re.supersetGroup || ''}
+                        </Text>
+                      </View>
+                      <Pressable
+                        onPress={() => toggleBlockCollapse(supersetBlockKey)}
+                        style={styles.blockCollapseBtn}
+                        accessibilityRole="button"
+                        accessibilityLabel="Riduci blocco super serie"
+                      >
+                        <Text style={styles.blockCollapseBtnText}>▲ Riduci</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                )}
+
+                <Card
+                  style={[
+                    styles.exCard,
+                    re.blockType === 'CIRCUIT'
+                      ? styles.circuitCardBorder
+                      : re.supersetGroup
+                      ? styles.supersetCardBorder
+                      : null,
+                  ]}
+                >
+                  <View style={styles.exHeader}>
+                    {/* Reordering Controls (▲ / ▼) */}
+                    <View style={styles.reorderCol}>
+                      <Pressable
+                        onPress={() => handleMoveUp(exIdx)}
+                        disabled={exIdx === 0}
+                        style={[styles.arrowBtn, exIdx === 0 && styles.arrowBtnDisabled]}
+                      >
+                        <Text style={[styles.arrowText, exIdx === 0 && styles.arrowTextDisabled]}>▲</Text>
+                      </Pressable>
+                      <Pressable
+                        onPress={() => handleMoveDown(exIdx)}
+                        disabled={exIdx === routineExercises.length - 1}
+                        style={[
+                          styles.arrowBtn,
+                          exIdx === routineExercises.length - 1 && styles.arrowBtnDisabled,
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.arrowText,
+                            exIdx === routineExercises.length - 1 && styles.arrowTextDisabled,
+                          ]}
+                        >
+                          ▼
+                        </Text>
+                      </Pressable>
+                    </View>
+
+                    <View style={{ flex: 1, marginLeft: 8 }}>
+                      {re.blockType === 'CIRCUIT' ? (
+                        <View style={[styles.supersetTag, { backgroundColor: 'rgba(234, 179, 8, 0.15)' }]}>
+                          <Text style={[styles.supersetTagText, { color: '#eab308' }]}>
+                            🔄 CIRCUITO ({re.circuitRounds || 3} Giri)
+                          </Text>
+                        </View>
+                      ) : re.supersetGroup ? (
+                        <View style={styles.supersetTag}>
+                          <Text style={styles.supersetTagText}>
+                            ⚡ SUPER SERIE {re.supersetGroup}
+                          </Text>
+                        </View>
+                      ) : null}
+                      <Text style={typography.bodyBold}>
+                        {re.exerciseOrder}. {exName}
+                      </Text>
+                      <Text style={typography.caption}>
+                        {muscle} • Tipo:{' '}
+                        <Text style={{ color: colors.accent, fontWeight: '700' }}>
+                          {exType === 'reps'
+                            ? 'CARICO + REPS'
+                            : exType === 'time'
+                            ? 'ISOMETRIA (TEMPO)'
+                            : 'CORPO LIBERO'}
+                        </Text>
+                      </Text>
+                    </View>
 
                   <View style={styles.headerRightActions}>
                     <Pressable
@@ -899,58 +1472,131 @@ export const NewRoutineModal: React.FC = () => {
                   </Pressable>
                 ) : (
                   <>
-                    {/* Descrizione Tecnica & Video Guida */}
-                    <View style={styles.exInfoBlock}>
-                      <View style={styles.exDescRow}>
-                        <Text style={styles.miniLabel}>DESCRIZIONE GENERICA ESERCIZIO</Text>
-                        <TextInput
-                          style={[styles.textInput, styles.exDescInp]}
-                          value={re.customDescription ?? (exInfo?.description || '')}
-                          onChangeText={(val) => {
-                            const up = [...routineExercises];
-                            up[exIdx].customDescription = val;
-                            setRoutineExercises(up);
-                          }}
-                          placeholder={exInfo?.description || "Aggiungi note esecutive, setup, ROM..."}
-                          placeholderTextColor={colors.textMuted}
-                          multiline
-                          numberOfLines={2}
-                        />
-                      </View>
+                    {/* Descrizione Tecnica & Video Guida (Toggleable Opt-In / Opt-Out) */}
+                    {!hiddenNotesExIds.has(re.tempId) ? (
+                      <View style={styles.exInfoBlock}>
+                        <View style={styles.exInfoBlockHeader}>
+                          <Text style={styles.miniLabel}>DESCRIZIONE E LINK VIDEO</Text>
+                          <Pressable
+                            onPress={() => {
+                              setHiddenNotesExIds((prev) => {
+                                const next = new Set(prev);
+                                next.add(re.tempId);
+                                return next;
+                              });
+                            }}
+                            style={styles.removeNotesBtn}
+                            accessibilityRole="button"
+                            accessibilityLabel="Rimuovi sezione note e video"
+                          >
+                            <Text style={styles.removeNotesBtnText}>🗑 Rimuovi Note</Text>
+                          </Pressable>
+                        </View>
 
-                      <View style={styles.exVideoRow}>
-                        <View style={{ flex: 1 }}>
-                          <Text style={styles.miniLabel}>LINK VIDEO YOUTUBE (URL)</Text>
+                        <View style={styles.exDescRow}>
                           <TextInput
-                            style={styles.setInpVideo}
-                            value={re.customVideoUrl ?? (exInfo?.video_url || '')}
+                            style={[styles.textInput, styles.exDescInp]}
+                            value={re.customDescription ?? (exInfo?.description || '')}
                             onChangeText={(val) => {
                               const up = [...routineExercises];
-                              up[exIdx].customVideoUrl = val;
+                              up[exIdx].customDescription = val;
                               setRoutineExercises(up);
                             }}
-                            placeholder={exInfo?.video_url || "https://youtu.be/..."}
+                            placeholder={exInfo?.description || "Aggiungi note esecutive, setup, ROM..."}
                             placeholderTextColor={colors.textMuted}
-                            autoCapitalize="none"
-                            autoCorrect={false}
+                            multiline
+                            numberOfLines={2}
                           />
                         </View>
-                        {Boolean((re.customVideoUrl ?? exInfo?.video_url)?.trim()) && (
-                          <Pressable
-                            style={styles.videoWatchBtn}
-                            onPress={() =>
-                              setActiveVideoModal({
-                                visible: true,
-                                url: (re.customVideoUrl ?? exInfo?.video_url)!.trim(),
-                                name: exName,
-                              })
-                            }
-                          >
-                            <Text style={styles.videoWatchBtnText}>🎬 Video</Text>
-                          </Pressable>
-                        )}
+
+                        <View style={styles.exVideoRow}>
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.miniLabel}>LINK VIDEO YOUTUBE (URL)</Text>
+                            <TextInput
+                              style={styles.setInpVideo}
+                              value={re.customVideoUrl ?? (exInfo?.video_url || '')}
+                              onChangeText={(val) => {
+                                const up = [...routineExercises];
+                                up[exIdx].customVideoUrl = val;
+                                setRoutineExercises(up);
+                              }}
+                              placeholder={exInfo?.video_url || "https://youtu.be/..."}
+                              placeholderTextColor={colors.textMuted}
+                              autoCapitalize="none"
+                              autoCorrect={false}
+                            />
+                          </View>
+                          {Boolean((re.customVideoUrl ?? exInfo?.video_url)?.trim()) && (
+                            <Pressable
+                              style={styles.videoWatchBtn}
+                              onPress={() =>
+                                setActiveVideoModal({
+                                  visible: true,
+                                  url: (re.customVideoUrl ?? exInfo?.video_url)!.trim(),
+                                  name: exName,
+                                })
+                              }
+                            >
+                              <Text style={styles.videoWatchBtnText}>🎬 Video</Text>
+                            </Pressable>
+                          )}
+                        </View>
                       </View>
-                    </View>
+                    ) : (
+                      <Pressable
+                        onPress={() => {
+                          setHiddenNotesExIds((prev) => {
+                            const next = new Set(prev);
+                            next.delete(re.tempId);
+                            return next;
+                          });
+                        }}
+                        style={styles.addNotesBtn}
+                        accessibilityRole="button"
+                        accessibilityLabel="Aggiungi sezione note e video"
+                      >
+                        <Text style={styles.addNotesBtnText}>+ Aggiungi Note / Video</Text>
+                      </Pressable>
+                    )}
+
+                    {/* Intra-Recupero for Circuit Exercises */}
+                    {re.blockType === 'CIRCUIT' && (
+                      <View style={styles.intraRestConfigRow}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.miniLabel}>INTRA-RECUPERO (DOPO QUESTO ESERCIZIO)</Text>
+                          <Text style={typography.caption}>Pausa prima del prossimo esercizio del giro</Text>
+                        </View>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <Pressable
+                            onPress={() => {
+                              const up = [...routineExercises];
+                              up[exIdx].intraRestSeconds = Math.max(
+                                0,
+                                (up[exIdx].intraRestSeconds ?? 15) - 5
+                              );
+                              setRoutineExercises(up);
+                            }}
+                            style={styles.circuitStepperBtn}
+                          >
+                            <Text style={styles.circuitStepperText}>-5s</Text>
+                          </Pressable>
+                          <Text style={styles.intraRestValueText}>
+                            {re.intraRestSeconds ?? 15}s
+                          </Text>
+                          <Pressable
+                            onPress={() => {
+                              const up = [...routineExercises];
+                              up[exIdx].intraRestSeconds =
+                                (up[exIdx].intraRestSeconds ?? 15) + 5;
+                              setRoutineExercises(up);
+                            }}
+                            style={styles.circuitStepperBtn}
+                          >
+                            <Text style={styles.circuitStepperText}>+5s</Text>
+                          </Pressable>
+                        </View>
+                      </View>
+                    )}
 
                     {/* Sets List (Starts at 0) */}
                     {re.sets.length === 0 ? (
@@ -980,9 +1626,9 @@ export const NewRoutineModal: React.FC = () => {
                                 {s.setType !== 'dropset' && s.setType !== 'rest_pause' ? (
                                   <>
                                     {exType === 'reps' && (
-                                      <>
+                                      <View style={{ flexDirection: 'row', flex: 1, gap: 6 }}>
                                         <View style={[styles.inputMiniCol, { flex: 1 }]}>
-                                          <Text style={styles.miniLabel} numberOfLines={1}>TARGET KG</Text>
+                                          <Text style={styles.miniLabel} numberOfLines={1}>KG</Text>
                                           <TextInput
                                             style={styles.setInp}
                                             keyboardType="decimal-pad"
@@ -990,7 +1636,7 @@ export const NewRoutineModal: React.FC = () => {
                                             onChangeText={(val) => {
                                               const num = parseFloat(val.replace(',', '.'));
                                               const up = [...routineExercises];
-                                              up[exIdx].sets[sIdx].targetWeightKg = isNaN(num) ? 0 : num;
+                                              up[exIdx].sets[sIdx].targetWeightKg = val.trim() === '' || isNaN(num) ? 0 : Math.max(0, num);
                                               setRoutineExercises(up);
                                             }}
                                             placeholder="0"
@@ -1007,30 +1653,30 @@ export const NewRoutineModal: React.FC = () => {
                                             onChangeText={(val) => {
                                               const num = parseInt(val, 10);
                                               const up = [...routineExercises];
-                                              up[exIdx].sets[sIdx].targetReps = isNaN(num) ? 0 : num;
+                                              up[exIdx].sets[sIdx].targetReps = val.trim() === '' || isNaN(num) ? 0 : Math.max(0, num);
                                               setRoutineExercises(up);
                                             }}
-                                            placeholder="10"
+                                            placeholder="0"
                                             placeholderTextColor={colors.textMuted}
                                           />
                                         </View>
-                                      </>
+                                      </View>
                                     )}
 
                                     {exType === 'time' && (
                                       <View style={[styles.inputMiniCol, { flex: 2 }]}>
-                                        <Text style={styles.miniLabel} numberOfLines={1}>DURATA TARGET</Text>
+                                        <Text style={styles.miniLabel} numberOfLines={1}>⏱️ SEC</Text>
                                         <TextInput
                                           style={[styles.setInp, { color: colors.emerald }]}
                                           keyboardType="numeric"
-                                          value={String(s.targetTimeSeconds || 60)}
+                                          value={s.targetTimeSeconds === 0 ? '' : String(s.targetTimeSeconds ?? '')}
                                           onChangeText={(val) => {
                                             const num = parseInt(val, 10);
                                             const up = [...routineExercises];
-                                            up[exIdx].sets[sIdx].targetTimeSeconds = isNaN(num) ? 60 : num;
+                                            up[exIdx].sets[sIdx].targetTimeSeconds = val.trim() === '' || isNaN(num) ? 0 : Math.max(0, num);
                                             setRoutineExercises(up);
                                           }}
-                                          placeholder="60s"
+                                          placeholder="0"
                                           placeholderTextColor={colors.textMuted}
                                         />
                                       </View>
@@ -1039,7 +1685,7 @@ export const NewRoutineModal: React.FC = () => {
                                     {exType === 'bodyweight' && (
                                       <>
                                         <View style={[styles.inputMiniCol, { flex: 2 }]}>
-                                          <Text style={styles.miniLabel} numberOfLines={1}>TIPO / ELASTICO</Text>
+                                          <Text style={styles.miniLabel} numberOfLines={1}>ELASTICO</Text>
                                           <BandSelectDropdown
                                             compact
                                             style={styles.bandDropdown}
@@ -1054,7 +1700,7 @@ export const NewRoutineModal: React.FC = () => {
 
                                         {s.bandAssistance === 'weighted' && (
                                           <View style={[styles.inputMiniCol, { flex: 1.2 }]}>
-                                            <Text style={styles.miniLabel} numberOfLines={1}>ZAVORRA (+KG)</Text>
+                                            <Text style={styles.miniLabel} numberOfLines={1}>+KG</Text>
                                             <TextInput
                                               style={styles.setInp}
                                               keyboardType="decimal-pad"
@@ -1062,7 +1708,7 @@ export const NewRoutineModal: React.FC = () => {
                                               onChangeText={(val) => {
                                                 const num = parseFloat(val.replace(',', '.'));
                                                 const up = [...routineExercises];
-                                                up[exIdx].sets[sIdx].targetWeightKg = isNaN(num) ? 0 : num;
+                                                up[exIdx].sets[sIdx].targetWeightKg = val.trim() === '' || isNaN(num) ? 0 : Math.max(0, num);
                                                 setRoutineExercises(up);
                                               }}
                                               placeholder="+0"
@@ -1080,59 +1726,65 @@ export const NewRoutineModal: React.FC = () => {
                                             onChangeText={(val) => {
                                               const num = parseInt(val, 10);
                                               const up = [...routineExercises];
-                                              up[exIdx].sets[sIdx].targetReps = isNaN(num) ? 0 : num;
+                                              up[exIdx].sets[sIdx].targetReps = val.trim() === '' || isNaN(num) ? 0 : Math.max(0, num);
                                               setRoutineExercises(up);
                                             }}
-                                            placeholder="8"
+                                            placeholder="0"
                                             placeholderTextColor={colors.textMuted}
                                           />
                                         </View>
                                       </>
                                     )}
 
-                                    <View style={[styles.inputMiniCol, { flex: 1.2 }]}>
-                                      <Text style={styles.miniLabel} numberOfLines={1}>RECUPERO</Text>
+                                    {!isCircuit && (
+                                      <View style={[styles.inputMiniCol, { flex: 1.2 }]}>
+                                        <Text style={styles.miniLabel} numberOfLines={1}>⏱️ REC.</Text>
+                                        <TextInput
+                                          style={styles.setInp}
+                                          keyboardType="numeric"
+                                          value={s.restSeconds === 0 ? '' : String(s.restSeconds)}
+                                          onChangeText={(val) => {
+                                            const num = parseInt(val, 10);
+                                            const up = [...routineExercises];
+                                            up[exIdx].sets[sIdx].restSeconds = val.trim() === '' || isNaN(num) ? 0 : Math.max(0, num);
+                                            setRoutineExercises(up);
+                                          }}
+                                          placeholder="0"
+                                          placeholderTextColor={colors.textMuted}
+                                        />
+                                      </View>
+                                    )}
+                                  </>
+                                ) : (
+                                  !isCircuit && (
+                                    <View style={[styles.inputMiniCol, { flex: 1, maxWidth: 90 }]}>
+                                      <Text style={styles.miniLabel} numberOfLines={1}>⏱️ FINALE</Text>
                                       <TextInput
                                         style={styles.setInp}
                                         keyboardType="numeric"
-                                        value={String(s.restSeconds)}
+                                        value={s.restSeconds === 0 ? '' : String(s.restSeconds)}
                                         onChangeText={(val) => {
                                           const num = parseInt(val, 10);
                                           const up = [...routineExercises];
-                                          up[exIdx].sets[sIdx].restSeconds = isNaN(num) ? 90 : num;
+                                          up[exIdx].sets[sIdx].restSeconds = val.trim() === '' || isNaN(num) ? 0 : Math.max(0, num);
                                           setRoutineExercises(up);
                                         }}
-                                        placeholder="90s"
+                                        placeholder="0"
                                         placeholderTextColor={colors.textMuted}
                                       />
                                     </View>
-                                  </>
-                                ) : (
-                                  <View style={[styles.inputMiniCol, { flex: 1, maxWidth: 90 }]}>
-                                    <Text style={styles.miniLabel} numberOfLines={1}>REC. FINALE</Text>
-                                    <TextInput
-                                      style={styles.setInp}
-                                      keyboardType="numeric"
-                                      value={String(s.restSeconds)}
-                                      onChangeText={(val) => {
-                                        const num = parseInt(val, 10);
-                                        const up = [...routineExercises];
-                                        up[exIdx].sets[sIdx].restSeconds = isNaN(num) ? 90 : num;
-                                        setRoutineExercises(up);
-                                      }}
-                                      placeholder="90s"
-                                      placeholderTextColor={colors.textMuted}
-                                    />
-                                  </View>
+                                  )
                                 )}
                               </View>
 
-                              <Pressable
-                                onPress={() => handleRemoveSet(exIdx, sIdx)}
-                                style={styles.setDelBtn}
-                              >
-                                <Text style={styles.setDelText}>×</Text>
-                              </Pressable>
+                              {!isCircuit && (
+                                <Pressable
+                                  onPress={() => handleRemoveSet(exIdx, sIdx)}
+                                  style={styles.setDelBtn}
+                                >
+                                  <Text style={styles.setDelText}>×</Text>
+                                </Pressable>
+                              )}
                         </View>
 
                         {/* Dynamic Drops Rows for Stripping & Rest-Pause */}
@@ -1146,10 +1798,40 @@ export const NewRoutineModal: React.FC = () => {
                               </Text>
                               <View style={styles.finalRestBadge}>
                                 <Text style={styles.finalRestBadgeText}>
-                                  Rec. Finale: {s.restSeconds}s
+                                  ⏱️ {s.restSeconds}s
                                 </Text>
                               </View>
                             </View>
+
+                            {s.setType === 'dropset' && (
+                              <View style={styles.dropPercentageBar}>
+                                <Text style={styles.dropPercentageLabel}>📉 SCARICO (%):</Text>
+                                <View style={styles.dropPercentageInputWrapper}>
+                                  <TextInput
+                                    style={styles.dropPercentageInput}
+                                    keyboardType="numeric"
+                                    value={s.dropPercentage === null || s.dropPercentage === undefined || s.dropPercentage === 0 ? '' : String(s.dropPercentage)}
+                                    onChangeText={(val) => {
+                                      const num = parseFloat(val.replace(',', '.'));
+                                      const pct = val.trim() === '' || isNaN(num) ? 0 : Math.max(0, Math.min(100, num));
+                                      const up = [...routineExercises];
+                                      const curSet = up[exIdx].sets[sIdx];
+                                      curSet.dropPercentage = pct;
+                                      if (pct > 0 && curSet.drops && curSet.drops.length > 1) {
+                                        for (let d = 1; d < curSet.drops.length; d++) {
+                                          const prevKg = Number(curSet.drops[d - 1].kg || 0);
+                                          curSet.drops[d].kg = Math.max(0, Math.round(prevKg * (1 - pct / 100) * 10) / 10);
+                                        }
+                                      }
+                                      setRoutineExercises(up);
+                                    }}
+                                    placeholder="20"
+                                    placeholderTextColor={colors.textMuted}
+                                  />
+                                  <Text style={styles.dropPercentageUnit}>%</Text>
+                                </View>
+                              </View>
+                            )}
 
                             {(s.drops || []).map((drop, dropIdx) => {
                               const isLastDrop = dropIdx === (s.drops?.length || 0) - 1;
@@ -1167,9 +1849,20 @@ export const NewRoutineModal: React.FC = () => {
                                       value={drop.kg === 0 ? '' : String(drop.kg)}
                                       onChangeText={(val) => {
                                         const num = parseFloat(val.replace(',', '.'));
+                                        const newKg = val.trim() === '' || isNaN(num) ? 0 : Math.max(0, num);
                                         const up = [...routineExercises];
-                                        if (up[exIdx].sets[sIdx].drops) {
-                                          up[exIdx].sets[sIdx].drops![dropIdx].kg = isNaN(num) ? 0 : num;
+                                        const curSet = up[exIdx].sets[sIdx];
+                                        if (curSet.drops) {
+                                          curSet.drops[dropIdx].kg = newKg;
+                                          if (dropIdx === 0) {
+                                            curSet.targetWeightKg = newKg;
+                                            if (curSet.setType === 'dropset' && curSet.dropPercentage && curSet.dropPercentage > 0) {
+                                              for (let d = 1; d < curSet.drops.length; d++) {
+                                                const prevKg = Number(curSet.drops[d - 1].kg || 0);
+                                                curSet.drops[d].kg = Math.max(0, Math.round(prevKg * (1 - curSet.dropPercentage / 100) * 10) / 10);
+                                              }
+                                            }
+                                          }
                                         }
                                         setRoutineExercises(up);
                                       }}
@@ -1188,11 +1881,11 @@ export const NewRoutineModal: React.FC = () => {
                                         const num = parseInt(val, 10);
                                         const up = [...routineExercises];
                                         if (up[exIdx].sets[sIdx].drops) {
-                                          up[exIdx].sets[sIdx].drops![dropIdx].reps = isNaN(num) ? 0 : num;
+                                          up[exIdx].sets[sIdx].drops![dropIdx].reps = val.trim() === '' || isNaN(num) ? 0 : Math.max(0, num);
                                         }
                                         setRoutineExercises(up);
                                       }}
-                                      placeholder="10"
+                                      placeholder="0"
                                       placeholderTextColor={colors.textMuted}
                                     />
                                   </View>
@@ -1203,18 +1896,18 @@ export const NewRoutineModal: React.FC = () => {
                                       <TextInput
                                         style={styles.dropInp}
                                         keyboardType="numeric"
-                                        value={String(drop.restSeconds ?? (s.setType === 'rest_pause' ? 10 : 0))}
+                                        value={drop.restSeconds === 0 ? '' : String(drop.restSeconds ?? (s.setType === 'rest_pause' ? 10 : ''))}
                                         onChangeText={(val) => {
                                           const num = parseInt(val, 10);
                                           const up = [...routineExercises];
                                           if (up[exIdx].sets[sIdx].drops) {
-                                            up[exIdx].sets[sIdx].drops![dropIdx].restSeconds = isNaN(num)
+                                            up[exIdx].sets[sIdx].drops![dropIdx].restSeconds = val.trim() === '' || isNaN(num)
                                               ? 0
-                                              : num;
+                                              : Math.max(0, num);
                                           }
                                           setRoutineExercises(up);
                                         }}
-                                        placeholder={s.setType === 'rest_pause' ? '10s' : '0s'}
+                                        placeholder="0"
                                         placeholderTextColor={colors.textMuted}
                                       />
                                     </View>
@@ -1237,13 +1930,6 @@ export const NewRoutineModal: React.FC = () => {
                               );
                             })}
 
-                            {/* Explanatory note */}
-                            <View style={styles.dropExplainerBox}>
-                              <Text style={styles.dropExplainerText}>
-                                💡 Pause intra-serie tra i mini-step. Al termine dell'ultimo step scatterà il Recupero Finale ({s.restSeconds}s) prima della serie successiva.
-                              </Text>
-                            </View>
-
                             {/* Add Drop / Slot button */}
                             <Pressable
                               onPress={() => handleAddDropSlot(exIdx, sIdx)}
@@ -1260,18 +1946,49 @@ export const NewRoutineModal: React.FC = () => {
                   })
                 )}
 
-                {/* Add Set Button */}
-                <Pressable
-                  onPress={() => handleOpenAddSet(exIdx)}
-                  style={styles.addSetRowBtn}
-                >
-                  <Text style={styles.addSetRowText}>+ Aggiungi Serie</Text>
-                </Pressable>
+                {/* Add Set Button or Circuit Note */}
+                {!isCircuit ? (
+                  <Pressable
+                    onPress={() => handleOpenAddSet(exIdx)}
+                    style={styles.addSetRowBtn}
+                  >
+                    <Text style={styles.addSetRowText}>+ Aggiungi Serie</Text>
+                  </Pressable>
+                ) : (
+                  <View style={styles.circuitSingleSetNote}>
+                    <Text style={styles.circuitSingleSetNoteText}>
+                      🔄 Serie base target per ciascuno dei {re.circuitRounds || 3} giri del circuito
+                    </Text>
+                  </View>
+                )}
               </>
             )}
           </Card>
-            );
-          })
+
+          {isLastInCircuit && !isCircuitCollapsed && (
+            <Pressable
+              onPress={() => handleOpenAddCircuitExercise(re.blockId!)}
+              style={styles.addCircuitExerciseBtn}
+              accessibilityRole="button"
+              accessibilityLabel="Aggiungi esercizio a questo circuito"
+            >
+              <Text style={styles.addCircuitExerciseBtnText}>+ Aggiungi Esercizio al Circuito</Text>
+            </Pressable>
+          )}
+        </React.Fragment>
+      );
+    })
+        )}
+
+        {routineExercises.length > 0 && (
+          <Pressable
+            onPress={handleOpenAddChoice}
+            style={styles.bottomAddExerciseBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Aggiungi esercizio alla scheda"
+          >
+            <Text style={styles.bottomAddExerciseBtnText}>+ AGGIUNGI ESERCIZIO ALLA SCHEDA</Text>
+          </Pressable>
         )}
       </ScrollView>
 
@@ -1304,6 +2021,18 @@ export const NewRoutineModal: React.FC = () => {
               <View style={{ flex: 1, marginLeft: 12 }}>
                 <Text style={[typography.bodyBold, { color: colors.accent }]}>Super Serie</Text>
                 <Text style={typography.caption}>Seleziona 2 o più esercizi da alternare a round</Text>
+              </View>
+              <Text style={styles.choiceArrow}>→</Text>
+            </Pressable>
+
+            <Pressable
+              onPress={() => handleSelectAddType('circuit')}
+              style={[styles.choiceOptionBtn, { borderColor: '#eab308' }]}
+            >
+              <Text style={styles.choiceOptionIcon}>🔄</Text>
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={[typography.bodyBold, { color: '#eab308' }]}>Circuito a Round</Text>
+                <Text style={typography.caption}>2+ esercizi in sequenza a giri con recupero fine giro e intra</Text>
               </View>
               <Text style={styles.choiceArrow}>→</Text>
             </Pressable>
@@ -1346,23 +2075,30 @@ export const NewRoutineModal: React.FC = () => {
         </View>
       )}
 
-      {/* Exercise Picker Overlay Modal (Supports Single & Multi/Superset) */}
+      {/* Exercise Picker Overlay Modal (Supports Single, Superset & Circuit) */}
       {showExercisePicker && (
         <View style={styles.pickerOverlay}>
           <View style={styles.pickerModal}>
             <View style={styles.pickerHeader}>
               <View>
                 <Text style={typography.h3}>
-                  {pickerMode === 'superset' ? 'Seleziona Esercizi Super Serie' : 'Seleziona dal Catalogo'}
+                  {pickerMode === 'circuit'
+                    ? 'Seleziona Esercizi Circuito'
+                    : pickerMode === 'superset'
+                    ? 'Seleziona Esercizi Super Serie'
+                    : 'Seleziona dal Catalogo'}
                 </Text>
-                {pickerMode === 'superset' && (
+                {(pickerMode === 'superset' || pickerMode === 'circuit') && (
                   <Text style={typography.caption}>
                     Selezionati: {selectedSupersetExerciseIds.length} (minimo 2)
                   </Text>
                 )}
               </View>
               <Pressable
-                onPress={() => setShowExercisePicker(false)}
+                onPress={() => {
+                  setTargetCircuitBlockId(null);
+                  setShowExercisePicker(false);
+                }}
                 style={styles.closeButton}
               >
                 <Text style={styles.closeButtonText}>✕</Text>
@@ -1396,12 +2132,13 @@ export const NewRoutineModal: React.FC = () => {
             <ScrollView style={styles.pickerList}>
               {filteredExercises.map((ex) => {
                 const isSelected = selectedSupersetExerciseIds.includes(ex.id);
+                const isMulti = pickerMode === 'superset' || pickerMode === 'circuit';
 
                 return (
                   <Pressable
                     key={ex.id}
                     onPress={() => {
-                      if (pickerMode === 'superset') {
+                      if (isMulti) {
                         handleToggleSupersetSelection(ex.id);
                       } else {
                         handleSelectSingleExercise(ex.id);
@@ -1419,7 +2156,7 @@ export const NewRoutineModal: React.FC = () => {
                       </Text>
                     </View>
 
-                    {pickerMode === 'superset' ? (
+                    {isMulti ? (
                       <View style={[styles.checkboxCircle, isSelected && styles.checkboxCircleActive]}>
                         {isSelected && <Text style={styles.checkboxCheck}>✓</Text>}
                       </View>
@@ -1442,6 +2179,23 @@ export const NewRoutineModal: React.FC = () => {
                 >
                   <Text style={styles.confirmSupersetBtnText}>
                     CREA SUPER SERIE ({selectedSupersetExerciseIds.length})
+                  </Text>
+                </Pressable>
+              </View>
+            )}
+
+            {pickerMode === 'circuit' && (
+              <View style={styles.pickerFooter}>
+                <Pressable
+                  onPress={handleConfirmCircuitSelection}
+                  style={[
+                    styles.confirmSupersetBtn,
+                    { backgroundColor: '#eab308' },
+                    selectedSupersetExerciseIds.length < 2 && styles.confirmSupersetBtnDisabled,
+                  ]}
+                >
+                  <Text style={[styles.confirmSupersetBtnText, { color: '#0F172A' }]}>
+                    CREA CIRCUITO ({selectedSupersetExerciseIds.length} ESERCIZI)
                   </Text>
                 </Pressable>
               </View>
@@ -1674,6 +2428,85 @@ const styles = StyleSheet.create({
     borderLeftWidth: 4,
     borderLeftColor: colors.accent,
   },
+  circuitCardBorder: {
+    borderLeftWidth: 4,
+    borderLeftColor: '#eab308',
+  },
+  circuitBlockBanner: {
+    backgroundColor: 'rgba(234, 179, 8, 0.08)',
+    borderRadius: layout.borderRadiusMd,
+    borderWidth: 1,
+    borderColor: 'rgba(234, 179, 8, 0.3)',
+    padding: 12,
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  circuitBlockHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8,
+  },
+  circuitBlockTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#eab308',
+  },
+  circuitSettingsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  circuitSettingItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  circuitSettingLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.textSecondary,
+  },
+  circuitSettingValue: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: colors.text,
+    minWidth: 22,
+    textAlign: 'center',
+  },
+  circuitStepperBtn: {
+    backgroundColor: colors.backgroundSubtle,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  circuitStepperText: {
+    color: colors.accent,
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  intraRestConfigRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(234, 179, 8, 0.06)',
+    borderLeftWidth: 3,
+    borderLeftColor: '#eab308',
+    padding: 8,
+    borderRadius: 6,
+    marginVertical: 6,
+  },
+  intraRestValueText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#eab308',
+    minWidth: 26,
+    textAlign: 'center',
+  },
   exHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1842,6 +2675,48 @@ const styles = StyleSheet.create({
     color: colors.danger,
     fontSize: 10,
     fontWeight: '800',
+  },
+  dropPercentageBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(239, 68, 68, 0.08)',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.2)',
+  },
+  dropPercentageLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: colors.textSecondary,
+    letterSpacing: 0.5,
+  },
+  dropPercentageInputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.backgroundSubtle,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.3)',
+    paddingHorizontal: 6,
+    height: 28,
+  },
+  dropPercentageInput: {
+    color: colors.danger,
+    fontSize: 12,
+    fontWeight: '800',
+    paddingVertical: 0,
+    paddingHorizontal: 2,
+    minWidth: 26,
+    textAlign: 'center',
+  },
+  dropPercentageUnit: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: colors.danger,
   },
   dropStepRow: {
     flexDirection: 'row',
@@ -2240,6 +3115,137 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: colors.textSecondary,
     lineHeight: 15,
+  },
+  blockCollapseBtn: {
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 4,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  blockCollapseBtnText: {
+    color: colors.text,
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  collapsedBlockSummary: {
+    marginTop: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: layout.borderRadiusSm,
+    backgroundColor: 'rgba(0, 0, 0, 0.25)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    alignItems: 'center',
+  },
+  collapsedBlockSummaryText: {
+    color: colors.textSecondary,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  supersetBlockBanner: {
+    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+    borderRadius: layout.borderRadiusMd,
+    borderWidth: 1,
+    borderColor: 'rgba(59, 130, 246, 0.35)',
+    padding: 12,
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  circuitSingleSetNote: {
+    marginTop: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: 'rgba(234, 179, 8, 0.08)',
+    borderRadius: layout.borderRadiusSm,
+    borderWidth: 1,
+    borderColor: 'rgba(234, 179, 8, 0.25)',
+    alignItems: 'center',
+  },
+  circuitSingleSetNoteText: {
+    color: '#eab308',
+    fontSize: 12,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  exInfoBlockHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  removeNotesBtn: {
+    paddingVertical: 3,
+    paddingHorizontal: 8,
+    borderRadius: layout.borderRadiusSm,
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.25)',
+  },
+  removeNotesBtnText: {
+    color: colors.danger,
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  addNotesBtn: {
+    marginTop: 8,
+    marginBottom: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: layout.borderRadiusSm,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+    borderStyle: 'dashed',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.02)',
+  },
+  addNotesBtnText: {
+    color: colors.textSecondary,
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  addCircuitExerciseBtn: {
+    marginHorizontal: 16,
+    marginTop: 4,
+    marginBottom: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: layout.borderRadiusSm,
+    borderWidth: 1,
+    borderColor: 'rgba(234, 179, 8, 0.4)',
+    borderStyle: 'dashed',
+    backgroundColor: 'rgba(234, 179, 8, 0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addCircuitExerciseBtnText: {
+    color: '#eab308',
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+  },
+  bottomAddExerciseBtn: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 24,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: layout.borderRadiusMd,
+    borderWidth: 1.5,
+    borderColor: colors.accent,
+    backgroundColor: 'rgba(14, 165, 233, 0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bottomAddExerciseBtnText: {
+    color: colors.accent,
+    fontSize: 13,
+    fontWeight: '900',
+    letterSpacing: 0.8,
   },
 });
 

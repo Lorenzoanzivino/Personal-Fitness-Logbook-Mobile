@@ -3,6 +3,7 @@ import {
   workoutSessions,
   workoutSessionExercises,
   workoutSessionSets,
+  workoutRoutines,
   exercises,
   users,
 } from '../db/schema';
@@ -241,6 +242,48 @@ export class WorkoutService {
           exercise: ex.exercise,
           sets: createdSets,
         });
+      }
+    }
+
+    // Avanzamento automatico della settimana della scheda se completata al 100%
+    if (body.routine_id && body.exercises && body.exercises.length > 0) {
+      let totalSetsCount = 0;
+      let completedSetsCount = 0;
+      for (const ex of body.exercises) {
+        if (ex.sets) {
+          for (const s of ex.sets) {
+            totalSetsCount++;
+            if (s.completed !== false) {
+              completedSetsCount++;
+            }
+          }
+        }
+      }
+
+      if (totalSetsCount > 0 && completedSetsCount === totalSetsCount) {
+        try {
+          const routineRows = await db
+            .select()
+            .from(workoutRoutines)
+            .where(eq(workoutRoutines.id, body.routine_id));
+
+          if (routineRows.length > 0) {
+            const routine = routineRows[0];
+            const maxWeeks = routine.durationWeeks || 4;
+            const currentW = routine.currentWeek ?? 1;
+            if (currentW < maxWeeks) {
+              await db
+                .update(workoutRoutines)
+                .set({
+                  currentWeek: currentW + 1,
+                  updatedAt: new Date(),
+                })
+                .where(eq(workoutRoutines.id, body.routine_id));
+            }
+          }
+        } catch (err) {
+          console.error('[WorkoutService] Errore auto-avanzamento settimana routine:', err);
+        }
       }
     }
 

@@ -50,3 +50,22 @@ export async function requireTrainer(request: FastifyRequest, reply: FastifyRepl
     });
   }
 }
+
+export function authorize(roles: Array<'TRAINER' | 'CLIENT'>) {
+  return async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
+    await authenticate(request, reply);
+    if (reply.sent) return;
+
+    if (!roles.includes(request.user.role)) {
+      reply.status(403).send({
+        success: false,
+        data: null,
+        error: {
+          code: 'FORBIDDEN',
+          message: 'Accesso negato: risorsa riservata ai ruoli autorizzati.',
+        },
+      });
+    }
+  };
+}
+

@@ -71,14 +71,26 @@ export const GymScreen: React.FC = () => {
   } = useGym();
 
   const [activeTab, setActiveTab] = useState<SubTab>(
-    route.params?.initialSubTab || 'routines'
+    userRole === 'CLIENT' && route.params?.initialSubTab === 'exercises'
+      ? 'routines'
+      : route.params?.initialSubTab || 'routines'
   );
 
   useEffect(() => {
     if (route.params?.initialSubTab) {
-      setActiveTab(route.params.initialSubTab);
+      if (userRole === 'CLIENT' && route.params.initialSubTab === 'exercises') {
+        setActiveTab('routines');
+      } else {
+        setActiveTab(route.params.initialSubTab);
+      }
     }
-  }, [route.params?.initialSubTab]);
+  }, [route.params?.initialSubTab, userRole]);
+
+  useEffect(() => {
+    if (userRole === 'CLIENT' && activeTab === 'exercises') {
+      setActiveTab('routines');
+    }
+  }, [userRole, activeTab]);
 
   // Catalog State
   const [selectedMuscle, setSelectedMuscle] = useState<string>('Tutti');
@@ -629,22 +641,24 @@ export const GymScreen: React.FC = () => {
             </Text>
           </Pressable>
 
-          <Pressable
-            style={[
-              styles.subTabItem,
-              activeTab === 'exercises' && styles.subTabItemActive,
-            ]}
-            onPress={() => setActiveTab('exercises')}
-          >
-            <Text
+          {userRole !== 'CLIENT' && (
+            <Pressable
               style={[
-                styles.subTabText,
-                activeTab === 'exercises' && styles.subTabTextActive,
+                styles.subTabItem,
+                activeTab === 'exercises' && styles.subTabItemActive,
               ]}
+              onPress={() => setActiveTab('exercises')}
             >
-              Catalogo ({exercises.length})
-            </Text>
-          </Pressable>
+              <Text
+                style={[
+                  styles.subTabText,
+                  activeTab === 'exercises' && styles.subTabTextActive,
+                ]}
+              >
+                Catalogo ({exercises.length})
+              </Text>
+            </Pressable>
+          )}
         </ScrollView>
       </View>
 
@@ -907,7 +921,13 @@ export const GymScreen: React.FC = () => {
               </Card>
             ) : (
               displayedRoutines.map((routine) => {
-                const exCount = routine.exercises ? routine.exercises.length : 0;
+                const blocks = routine.blocks || [];
+                const hasBlocks = blocks.length > 0;
+                const exCount = hasBlocks
+                  ? blocks.reduce((acc, b) => acc + (b.exercises ? b.exercises.length : 0), 0)
+                  : (routine.exercises ? routine.exercises.length : 0);
+                const circuitBlocks = blocks.filter((b) => b.block_type === 'CIRCUIT');
+                const supersetBlocks = blocks.filter((b) => b.block_type === 'SUPERSET');
                 const supersets = (routine.exercises || []).filter((e) => e.superset_group);
                 const borderColor = routine.border_color || colors.accent;
                 const isSelected = selectedRoutineIds.includes(routine.id);
@@ -932,10 +952,27 @@ export const GymScreen: React.FC = () => {
                     >
                       <View style={styles.routineHeader}>
                         <View style={{ flex: 1, marginRight: 8 }}>
-                          <View style={styles.routineFolderTag}>
-                            <Text style={styles.routineFolderTagText}>
-                              📁 {routine.folder_name || 'Generale'}
-                            </Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4, flexWrap: 'wrap' }}>
+                            <View style={[styles.routineFolderTag, { marginBottom: 0 }]}>
+                              <Text style={styles.routineFolderTagText}>
+                                📁 {routine.folder_name || 'Generale'}
+                              </Text>
+                            </View>
+                            <View
+                              style={[
+                                styles.routineFolderTag,
+                                {
+                                  marginBottom: 0,
+                                  backgroundColor: 'rgba(234, 179, 8, 0.15)',
+                                  borderWidth: 1,
+                                  borderColor: 'rgba(234, 179, 8, 0.4)',
+                                },
+                              ]}
+                            >
+                              <Text style={[styles.routineFolderTagText, { color: '#eab308', fontWeight: '800' }]}>
+                                📅 SETTIMANA {routine.current_week || 1} / {routine.duration_weeks || 4}
+                              </Text>
+                            </View>
                           </View>
                           <Text style={typography.h3}>{routine.name}</Text>
                           <Text style={typography.caption}>
@@ -968,13 +1005,48 @@ export const GymScreen: React.FC = () => {
                         </Text>
                       ) : null}
 
-                      {supersets.length > 0 && (
+                      {/* Block Badges (Standard, Superset, Circuito) */}
+                      {hasBlocks ? (
+                        <View style={styles.blockBadgesRow}>
+                          <View style={[styles.blockBadgeItem, { backgroundColor: 'rgba(255,255,255,0.06)', borderColor: 'rgba(255,255,255,0.15)' }]}>
+                            <Text style={[styles.blockBadgeText, { color: colors.textMuted }]}>
+                              🧱 {blocks.length} {blocks.length === 1 ? 'Blocco' : 'Blocchi'}
+                            </Text>
+                          </View>
+                          {circuitBlocks.map((cb, idx) => (
+                            <View
+                              key={`cb-${idx}`}
+                              style={[
+                                styles.blockBadgeItem,
+                                { backgroundColor: 'rgba(234, 179, 8, 0.15)', borderColor: '#eab308' },
+                              ]}
+                            >
+                              <Text style={[styles.blockBadgeText, { color: '#eab308' }]}>
+                                🔄 Circuito ({cb.rounds} Giri • Rec. {cb.rest_between_rounds}s)
+                              </Text>
+                            </View>
+                          ))}
+                          {supersetBlocks.map((sb, idx) => (
+                            <View
+                              key={`sb-${idx}`}
+                              style={[
+                                styles.blockBadgeItem,
+                                { backgroundColor: 'rgba(59, 130, 246, 0.15)', borderColor: '#3b82f6' },
+                              ]}
+                            >
+                              <Text style={[styles.blockBadgeText, { color: '#3b82f6' }]}>
+                                ⚡ Superset ({sb.exercises?.length || 2} es.)
+                              </Text>
+                            </View>
+                          ))}
+                        </View>
+                      ) : supersets.length > 0 ? (
                         <View style={styles.supersetTag}>
                           <Text style={styles.supersetTagText}>
                             ⚡ Include {supersets.length} esercizi in superset
                           </Text>
                         </View>
-                      )}
+                      ) : null}
 
                       {/* Routine Actions - Hidden or Disabled in Multi-Select Mode */}
                       {!routineSelectMode && (
@@ -984,7 +1056,7 @@ export const GymScreen: React.FC = () => {
                               navigation.navigate('WorkoutModal', {
                                 routineId: routine.id,
                                 routineName: routine.name,
-                                weekNumber: 1,
+                                weekNumber: routine.current_week || 1,
                               })
                             }
                             style={styles.launchButton}
@@ -1771,6 +1843,22 @@ const styles = StyleSheet.create({
   },
   supersetTagText: {
     color: colors.accent,
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  blockBadgesRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: 10,
+  },
+  blockBadgeItem: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: layout.borderRadiusSm,
+    borderWidth: 1,
+  },
+  blockBadgeText: {
     fontSize: 11,
     fontWeight: '700',
   },

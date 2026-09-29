@@ -9,86 +9,129 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  Alert,
 } from 'react-native';
 import { colors } from '../../theme/colors';
 import { layout } from '../../theme/spacing';
+import { typography } from '../../theme/typography';
 import { Card } from '../../components/Card';
+import { Avatar } from '../../components/Avatar';
+import { CustomConfirmModal } from '../../components/CustomConfirmModal';
 import { ScreenBackgroundWrapper } from '../../components/ScreenBackgroundWrapper';
 import { useAuth } from '../../context/AuthContext';
 
 export const ClientOnboardingScreen: React.FC = () => {
   const { user, completeClientOnboarding, logout } = useAuth();
 
-  const [username, setUsername] = useState(user?.username || '');
+  // Esattamente gli 8 campi richiesti per il Setup Profilo Obbligatorio
+  const [avatarUri, setAvatarUri] = useState<string | null>(user?.avatar_url || null);
+  const [username, setUsername] = useState(
+    user?.username ? user.username.replace(/^@/, '') : ''
+  );
+  const [firstName, setFirstName] = useState(user?.first_name || '');
+  const [lastName, setLastName] = useState(user?.last_name || '');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [birthDate, setBirthDate] = useState(user?.birth_date || '');
   const [heightCm, setHeightCm] = useState(user?.height_cm ? String(user.height_cm) : '');
+  const [birthDate, setBirthDate] = useState(user?.birth_date || '');
+
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
 
   const handleSaveAndEnter = async () => {
     setErrorMsg(null);
 
-    const cleanPass = password.trim();
-    if (!cleanPass) {
-      setErrorMsg('La nuova password è obbligatoria per completare la registrazione.');
+    // 1. Validazione Username (@nome)
+    const cleanUsername = username.trim().replace(/^@/, '');
+    if (!cleanUsername) {
+      setErrorMsg('Lo Username è obbligatorio.');
+      return;
+    }
+    if (!/^[a-zA-Z0-9_.-]+$/.test(cleanUsername)) {
+      setErrorMsg(
+        'Lo Username può contenere solo lettere, numeri, trattini, punti e underscore.'
+      );
       return;
     }
 
+    // 2. Validazione Nome
+    const cleanFirst = firstName.trim();
+    if (!cleanFirst) {
+      setErrorMsg('Il campo Nome è obbligatorio.');
+      return;
+    }
+
+    // 3. Validazione Cognome
+    const cleanLast = lastName.trim();
+    if (!cleanLast) {
+      setErrorMsg('Il campo Cognome è obbligatorio.');
+      return;
+    }
+
+    // 4. Validazione Password
+    const cleanPass = password.trim();
+    if (!cleanPass) {
+      setErrorMsg('La password è obbligatoria per proteggere il tuo account.');
+      return;
+    }
     if (cleanPass.length < 4) {
       setErrorMsg('La password deve contenere almeno 4 caratteri.');
       return;
     }
 
-    if (confirmPassword.trim() && confirmPassword.trim() !== cleanPass) {
-      setErrorMsg('Le password inserite non coincidono.');
+    // 5. Validazione Ripeti Password (combaciante)
+    if (confirmPassword.trim() !== cleanPass) {
+      setErrorMsg('Le due password inserite non coincidono. Verifica la digitazione.');
       return;
     }
 
-    const parsedHeight = heightCm.trim() ? parseInt(heightCm.trim(), 10) : undefined;
-    if (parsedHeight !== undefined && (isNaN(parsedHeight) || parsedHeight < 50 || parsedHeight > 260)) {
-      setErrorMsg('Inserisci un\'altezza valida in centimetri (es. 175).');
+    // 6. Validazione Altezza (cm)
+    const parsedHeight = parseFloat(heightCm.trim());
+    if (isNaN(parsedHeight) || parsedHeight < 50 || parsedHeight > 260) {
+      setErrorMsg('Inserisci un\'altezza valida in cm compresa tra 50 e 260.');
+      return;
+    }
+
+    // 7. Validazione Data di Nascita (DD-MM-YYYY)
+    const dateRegex = /^(\d{2})-(\d{2})-(\d{4})$/;
+    const match = birthDate.trim().match(dateRegex);
+    if (!match) {
+      setErrorMsg('La Data di Nascita deve essere nel formato DD-MM-YYYY (es. 15-05-1996).');
+      return;
+    }
+
+    const day = parseInt(match[1], 10);
+    const month = parseInt(match[2], 10);
+    const year = parseInt(match[3], 10);
+    if (month < 1 || month > 12 || day < 1 || day > 31 || year < 1920 || year > 2026) {
+      setErrorMsg('Data di Nascita non valida. Verifica giorno, mese e anno.');
       return;
     }
 
     setLoading(true);
     try {
       const res = await completeClientOnboarding({
-        username: username.trim() || undefined,
+        username: cleanUsername,
+        firstName: cleanFirst,
+        lastName: cleanLast,
         password: cleanPass,
-        birthDate: birthDate.trim() || undefined,
-        heightCm: parsedHeight,
+        height: parsedHeight,
+        dateOfBirth: birthDate.trim(),
+        avatar_url: avatarUri,
       });
 
       if (!res.success) {
-        setErrorMsg(res.error || 'Errore durante il salvataggio dei dati.');
+        setErrorMsg(res.error || 'Errore durante il salvataggio del profilo.');
       }
     } catch {
-      setErrorMsg('Si è verificato un errore imprevisto. Riprova.');
+      setErrorMsg('Si è verificato un errore di connessione. Riprova.');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleLogoutPress = () => {
-    Alert.alert(
-      'Esci dall\'account',
-      'Sei sicuro di voler uscire? Potrai completare l\'onboarding al prossimo accesso.',
-      [
-        { text: 'Annulla', style: 'cancel' },
-        {
-          text: 'Esci',
-          style: 'destructive',
-          onPress: async () => {
-            await logout();
-          },
-        },
-      ]
-    );
-  };
+  const fullName = `${firstName.trim()} ${lastName.trim()}`.trim() || 'Atleta';
 
   return (
     <ScreenBackgroundWrapper>
@@ -103,38 +146,26 @@ export const ClientOnboardingScreen: React.FC = () => {
         >
           {/* Header Badge */}
           <View style={styles.headerBadge}>
-            <View style={styles.iconCircle}>
-              <Text style={styles.iconCircleText}>🏋️‍♂️</Text>
-            </View>
             <View style={styles.welcomePill}>
-              <Text style={styles.welcomePillText}>BENVENUTO ATLETA</Text>
+              <Text style={styles.welcomePillText}>🔒 PRIMO ACCESSO PROTETTO</Text>
             </View>
-            <Text style={styles.title}>Completa il tuo Profilo</Text>
+            <Text style={styles.title}>Setup Profilo Obbligatorio</Text>
             <Text style={styles.subtitle}>
-              È il tuo primo accesso con codice OTP. Imposta la tua password personale per proteggere
-              il tuo account e accedere rapidamente.
+              Completa i tuoi dati personali e imposta la tua password personale per attivare il profilo e sbloccare la Dashboard.
             </Text>
           </View>
 
-          {/* Read-only Client Card */}
-          <Card style={styles.readOnlyCard}>
-            <View style={styles.readOnlyRow}>
-              <View style={styles.readOnlyCol}>
-                <Text style={styles.readOnlyLabel}>NOME</Text>
-                <Text style={styles.readOnlyValue}>{user?.first_name || 'N/D'}</Text>
-              </View>
-              <View style={styles.readOnlyCol}>
-                <Text style={styles.readOnlyLabel}>COGNOME</Text>
-                <Text style={styles.readOnlyValue}>{user?.last_name || 'N/D'}</Text>
-              </View>
-            </View>
-            {user?.trainer_name && (
-              <View style={styles.trainerAssignedRow}>
-                <Text style={styles.trainerAssignedLabel}>TRAINER ASSEGNATO:</Text>
-                <Text style={styles.trainerAssignedValue}>{user.trainer_name}</Text>
-              </View>
-            )}
-          </Card>
+          {/* Caricamento Foto Profilo (Avatar) */}
+          <View style={styles.avatarSection}>
+            <Avatar
+              imageUri={avatarUri}
+              name={fullName}
+              size={100}
+              editable={true}
+              onImageSelected={(uri) => setAvatarUri(uri)}
+            />
+            <Text style={styles.avatarHint}>Tocca la fotocamera per caricare la tua foto profilo</Text>
+          </View>
 
           {/* Error Banner */}
           {errorMsg && (
@@ -146,30 +177,65 @@ export const ClientOnboardingScreen: React.FC = () => {
 
           {/* Form Card */}
           <Card style={styles.formCard}>
-            {/* Username Input */}
+            {/* Campo 1: Username (@nome) */}
             <View style={styles.inputGroup}>
-              <View style={styles.labelRow}>
-                <Text style={styles.inputLabel}>SCEGLI UN USERNAME</Text>
-                <Text style={styles.optionalBadge}>Opzionale</Text>
+              <Text style={styles.inputLabel}>USERNAME (@) *</Text>
+              <View style={styles.usernameInputContainer}>
+                <Text style={styles.usernamePrefix}>@</Text>
+                <TextInput
+                  style={styles.usernameTextInput}
+                  value={username}
+                  onChangeText={(val) => {
+                    setUsername(val.replace(/^@/, ''));
+                    if (errorMsg) setErrorMsg(null);
+                  }}
+                  placeholder="mario_rossi"
+                  placeholderTextColor={colors.textMuted}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
               </View>
+              <Text style={styles.fieldHint}>Il tuo identificativo unico su My Train Up</Text>
+            </View>
+
+            {/* Campo 2: Nome */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>NOME *</Text>
               <TextInput
                 style={styles.textInput}
-                value={username}
+                value={firstName}
                 onChangeText={(val) => {
-                  setUsername(val);
+                  setFirstName(val);
                   if (errorMsg) setErrorMsg(null);
                 }}
-                placeholder="es. AlexPower (sostituirà il nome nel saluto)"
+                placeholder="es. Mario"
                 placeholderTextColor={colors.textMuted}
-                autoCapitalize="none"
+                autoCapitalize="words"
                 autoCorrect={false}
               />
             </View>
 
-            {/* Password Input */}
+            {/* Campo 3: Cognome */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>COGNOME *</Text>
+              <TextInput
+                style={styles.textInput}
+                value={lastName}
+                onChangeText={(val) => {
+                  setLastName(val);
+                  if (errorMsg) setErrorMsg(null);
+                }}
+                placeholder="es. Rossi"
+                placeholderTextColor={colors.textMuted}
+                autoCapitalize="words"
+                autoCorrect={false}
+              />
+            </View>
+
+            {/* Campo 4: Password */}
             <View style={styles.inputGroup}>
               <View style={styles.labelRow}>
-                <Text style={styles.inputLabel}>NUOVA PASSWORD *</Text>
+                <Text style={styles.inputLabel}>PASSWORD *</Text>
                 <Pressable onPress={() => setShowPassword((prev) => !prev)}>
                   <Text style={styles.toggleVisibilityText}>
                     {showPassword ? 'Nascondi' : 'Mostra'}
@@ -183,7 +249,7 @@ export const ClientOnboardingScreen: React.FC = () => {
                   setPassword(val);
                   if (errorMsg) setErrorMsg(null);
                 }}
-                placeholder="Crea una password sicura"
+                placeholder="Crea una password sicura (min. 4 caratteri)"
                 placeholderTextColor={colors.textMuted}
                 secureTextEntry={!showPassword}
                 autoCapitalize="none"
@@ -191,9 +257,9 @@ export const ClientOnboardingScreen: React.FC = () => {
               />
             </View>
 
-            {/* Confirm Password Input */}
+            {/* Campo 5: Ripeti Password */}
             <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>CONFERMA PASSWORD</Text>
+              <Text style={styles.inputLabel}>RIPETI PASSWORD *</Text>
               <TextInput
                 style={styles.textInput}
                 value={confirmPassword}
@@ -201,7 +267,7 @@ export const ClientOnboardingScreen: React.FC = () => {
                   setConfirmPassword(val);
                   if (errorMsg) setErrorMsg(null);
                 }}
-                placeholder="Ripeti la password scelta"
+                placeholder="Digita nuovamente la password"
                 placeholderTextColor={colors.textMuted}
                 secureTextEntry={!showPassword}
                 autoCapitalize="none"
@@ -209,12 +275,26 @@ export const ClientOnboardingScreen: React.FC = () => {
               />
             </View>
 
-            {/* Optional Bio Fields */}
+            {/* Campo 6: Altezza (cm) */}
             <View style={styles.inputGroup}>
-              <View style={styles.labelRow}>
-                <Text style={styles.inputLabel}>DATA DI NASCITA</Text>
-                <Text style={styles.optionalBadge}>Opzionale</Text>
-              </View>
+              <Text style={styles.inputLabel}>ALTEZZA (CM) *</Text>
+              <TextInput
+                style={styles.textInput}
+                value={heightCm}
+                onChangeText={(val) => {
+                  setHeightCm(val);
+                  if (errorMsg) setErrorMsg(null);
+                }}
+                placeholder="es. 175"
+                placeholderTextColor={colors.textMuted}
+                keyboardType="numeric"
+              />
+              <Text style={styles.fieldHint}>Necessaria per il calcolo del BMI e dei parametri corporei</Text>
+            </View>
+
+            {/* Campo 7: Data di Nascita */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>DATA DI NASCITA (DD-MM-YYYY) *</Text>
               <TextInput
                 style={styles.textInput}
                 value={birthDate}
@@ -224,27 +304,10 @@ export const ClientOnboardingScreen: React.FC = () => {
                 }}
                 placeholder="es. 15-05-1996"
                 placeholderTextColor={colors.textMuted}
-                autoCapitalize="none"
-                autoCorrect={false}
+                keyboardType="numbers-and-punctuation"
+                maxLength={10}
               />
-            </View>
-
-            <View style={styles.inputGroup}>
-              <View style={styles.labelRow}>
-                <Text style={styles.inputLabel}>ALTEZZA (CM)</Text>
-                <Text style={styles.optionalBadge}>Opzionale</Text>
-              </View>
-              <TextInput
-                style={styles.textInput}
-                value={heightCm}
-                onChangeText={(val) => {
-                  setHeightCm(val);
-                  if (errorMsg) setErrorMsg(null);
-                }}
-                placeholder="es. 178"
-                placeholderTextColor={colors.textMuted}
-                keyboardType="numeric"
-              />
+              <Text style={styles.fieldHint}>Formato richiesto: giorno-mese-anno (es. 15-05-1996)</Text>
             </View>
 
             {/* Submit Button */}
@@ -256,24 +319,40 @@ export const ClientOnboardingScreen: React.FC = () => {
                 { opacity: pressed || loading ? 0.85 : 1 },
               ]}
               accessibilityRole="button"
-              accessibilityLabel="Salva e accedi"
+              accessibilityLabel="Salva profilo e accedi"
             >
               {loading ? (
                 <ActivityIndicator color="#0F172A" />
               ) : (
-                <Text style={styles.submitButtonText}>SALVA E ACCEDI ➔</Text>
+                <Text style={styles.submitButtonText}>SALVA PROFILO & ACCEDI ➔</Text>
               )}
             </Pressable>
           </Card>
 
-          {/* Logout Escape Option */}
-          <View style={styles.logoutContainer}>
-            <Pressable onPress={handleLogoutPress} style={styles.logoutButton}>
-              <Text style={styles.logoutButtonText}>← Esci ed effettua l'accesso con un altro account</Text>
-            </Pressable>
-          </View>
+          {/* Logout Escape Button */}
+          <Pressable
+            onPress={() => setShowLogoutModal(true)}
+            style={styles.cancelBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Esci dall'account"
+          >
+            <Text style={styles.cancelBtnText}>Esci e completa in seguito</Text>
+          </Pressable>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <CustomConfirmModal
+        visible={showLogoutModal}
+        title="Disconnetti Account"
+        message="Sei sicuro di voler uscire? Potrai completare il setup del tuo profilo al prossimo accesso."
+        confirmText="Esci"
+        isDestructive={true}
+        onConfirm={async () => {
+          setShowLogoutModal(false);
+          await logout();
+        }}
+        onCancel={() => setShowLogoutModal(false)}
+      />
     </ScreenBackgroundWrapper>
   );
 };
@@ -284,46 +363,31 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   scrollContent: {
-    padding: 20,
-    paddingTop: Platform.OS === 'ios' ? 56 : 36,
-    paddingBottom: 40,
+    padding: 16,
+    paddingTop: Platform.OS === 'ios' ? 20 : 28,
+    paddingBottom: 48,
   },
   headerBadge: {
     alignItems: 'center',
-    marginBottom: 20,
-  },
-  iconCircle: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: colors.backgroundElevated,
-    borderWidth: 2,
-    borderColor: colors.accent,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  iconCircleText: {
-    fontSize: 32,
+    marginBottom: 16,
   },
   welcomePill: {
-    backgroundColor: 'rgba(234, 88, 15, 0.15)',
-    borderColor: colors.accent,
-    borderWidth: 1,
+    backgroundColor: 'rgba(234, 88, 15, 0.2)',
     paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 12,
+    paddingVertical: 5,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: colors.accent,
     marginBottom: 8,
   },
   welcomePillText: {
-    color: colors.accent,
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '800',
-    letterSpacing: 1,
+    color: colors.accent,
+    letterSpacing: 0.8,
   },
   title: {
-    fontSize: 22,
-    fontWeight: '800',
+    ...typography.h2,
     color: colors.text,
     textAlign: 'center',
     marginBottom: 6,
@@ -333,140 +397,126 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     textAlign: 'center',
     lineHeight: 18,
-    paddingHorizontal: 10,
+    paddingHorizontal: 16,
   },
-  readOnlyCard: {
-    marginBottom: 16,
-    borderLeftWidth: 4,
-    borderLeftColor: colors.primary,
-    backgroundColor: colors.backgroundElevated,
-  },
-  readOnlyRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  readOnlyCol: {
-    flex: 1,
-  },
-  readOnlyLabel: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: colors.textMuted,
-    letterSpacing: 0.8,
-    marginBottom: 4,
-  },
-  readOnlyValue: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.text,
-  },
-  trainerAssignedRow: {
-    marginTop: 12,
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    flexDirection: 'row',
+  avatarSection: {
     alignItems: 'center',
-    justifyContent: 'space-between',
+    marginBottom: 18,
   },
-  trainerAssignedLabel: {
+  avatarHint: {
     fontSize: 11,
-    fontWeight: '700',
     color: colors.textMuted,
-  },
-  trainerAssignedValue: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.accent,
+    marginTop: 8,
   },
   errorBanner: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: 'rgba(239, 68, 68, 0.15)',
-    borderColor: 'rgba(239, 68, 68, 0.4)',
+    borderRadius: layout.borderRadiusSm,
     borderWidth: 1,
-    borderRadius: layout.borderRadiusMd,
+    borderColor: colors.danger,
     padding: 12,
     marginBottom: 16,
+    gap: 8,
   },
   errorIcon: {
     fontSize: 16,
-    marginRight: 8,
   },
   errorText: {
-    color: colors.danger,
+    flex: 1,
     fontSize: 13,
     fontWeight: '600',
-    flex: 1,
+    color: colors.danger,
+    lineHeight: 18,
   },
   formCard: {
-    padding: 18,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: 16,
   },
   inputGroup: {
-    marginBottom: 14,
+    marginBottom: 16,
   },
   labelRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 6,
   },
   inputLabel: {
     fontSize: 11,
     fontWeight: '800',
     color: colors.textSecondary,
+    marginBottom: 6,
     letterSpacing: 0.5,
   },
-  optionalBadge: {
-    fontSize: 11,
-    color: colors.textMuted,
-    fontStyle: 'italic',
-  },
   toggleVisibilityText: {
-    color: colors.accent,
     fontSize: 11,
     fontWeight: '700',
+    color: colors.accent,
+    marginBottom: 6,
   },
   textInput: {
     backgroundColor: colors.backgroundElevated,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: layout.borderRadiusMd,
-    color: colors.text,
-    fontSize: 14,
+    borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 10,
+    fontSize: 15,
+    color: colors.text,
+    minHeight: layout.minTouchTarget,
+  },
+  usernameInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.backgroundElevated,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    minHeight: layout.minTouchTarget,
+  },
+  usernamePrefix: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: colors.accent,
+    marginRight: 4,
+  },
+  usernameTextInput: {
+    flex: 1,
+    paddingVertical: 10,
+    fontSize: 15,
+    color: colors.text,
+    minHeight: layout.minTouchTarget,
+  },
+  fieldHint: {
+    fontSize: 11,
+    color: colors.textMuted,
+    marginTop: 4,
   },
   submitButton: {
     backgroundColor: colors.accent,
-    borderRadius: layout.borderRadiusMd,
-    paddingVertical: 13,
+    borderRadius: 10,
+    paddingVertical: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 8,
-    shadowColor: colors.accent,
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.3,
-    shadowRadius: 5,
-    elevation: 3,
+    marginTop: 10,
+    minHeight: layout.minTouchTarget,
   },
   submitButtonText: {
     color: '#0F172A',
-    fontWeight: '800',
     fontSize: 14,
+    fontWeight: '900',
     letterSpacing: 0.8,
   },
-  logoutContainer: {
-    marginTop: 20,
+  cancelBtn: {
     alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
   },
-  logoutButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-  },
-  logoutButtonText: {
+  cancelBtnText: {
+    fontSize: 13,
     color: colors.textMuted,
-    fontSize: 12,
     fontWeight: '600',
   },
 });

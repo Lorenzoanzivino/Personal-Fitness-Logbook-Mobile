@@ -23,36 +23,42 @@ const APP_LOGO = require('../../../assets/logo1.png');
 export const LoginScreen: React.FC = () => {
   const { login } = useAuth();
 
-  const [username, setUsername] = useState('');
-  const [passwordOrOtp, setPasswordOrOtp] = useState('');
+  // Smart Login Form State (Single Form)
+  const [identifier, setIdentifier] = useState('');
+  const [secret, setSecret] = useState('');
+
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [showPassword, setShowPassword] = useState(false);
+  const [showSecret, setShowSecret] = useState(false);
 
   const handleLogin = async () => {
     setErrorMsg(null);
 
-    const cleanUser = username.trim();
-    const cleanPass = passwordOrOtp.trim();
+    const cleanIdentifier = identifier.trim();
+    const cleanSecret = secret.trim();
 
-    if (!cleanUser) {
-      setErrorMsg('Inserisci il tuo Username per accedere.');
+    if (!cleanIdentifier) {
+      setErrorMsg('Inserisci il tuo Username o Nome registrato per accedere.');
       return;
     }
 
-    if (!cleanPass) {
+    if (!cleanSecret) {
       setErrorMsg('Inserisci la Password o il Codice OTP fornito dal Trainer.');
       return;
     }
 
     setLoading(true);
     try {
-      const res = await login({ username: cleanUser, passwordOrOtp: cleanPass });
+      const res = await login({
+        identifier: cleanIdentifier,
+        secret: cleanSecret,
+      });
+
       if (!res.success) {
-        setErrorMsg(res.error || 'Credenziali non corrette.');
+        setErrorMsg(res.error || 'Credenziali non valide o non riconosciute.');
       }
     } catch {
-      setErrorMsg('Errore di connessione durante l\'accesso.');
+      setErrorMsg('Errore di connessione durante l\'accesso al server.');
     } finally {
       setLoading(false);
     }
@@ -64,97 +70,106 @@ export const LoginScreen: React.FC = () => {
         style={styles.container}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Brand Header */}
-        <View style={styles.brandContainer}>
-          <View style={styles.logoBadge}>
-            <Image source={APP_LOGO} style={styles.logoImage} resizeMode="contain" />
-          </View>
-          <Text style={styles.appTitle}>MY TRAIN UP</Text>
-          <Text style={styles.appSubtitle}>Personal Gym Hub & Workout Tracking</Text>
-          <View style={styles.roleGuardPill}>
-            <Text style={styles.roleGuardText}>SISTEMA AD ACCESSO PROTETTO (RBAC)</Text>
-          </View>
-        </View>
-
-        {/* Error Banner */}
-        {errorMsg && (
-          <View style={styles.errorBanner}>
-            <Text style={styles.errorIcon}>⚠️</Text>
-            <Text style={styles.errorText}>{errorMsg}</Text>
-          </View>
-        )}
-
-        {/* Login Form Card */}
-        <Card style={styles.formCard}>
-          <Text style={[typography.h3, { marginBottom: 6 }]}>Accedi all'Applicazione</Text>
-          <Text style={styles.formSubtitle}>
-            Inserisci le credenziali Trainer o lo Username e l'OTP fornito dal tuo istruttore.
-          </Text>
-
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>USERNAME *</Text>
-            <TextInput
-              style={styles.textInput}
-              value={username}
-              onChangeText={(val) => {
-                setUsername(val);
-                if (errorMsg) setErrorMsg(null);
-              }}
-              placeholder="es. Lorenzo oppure Username"
-              placeholderTextColor={colors.textMuted}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-          </View>
-
-          <View style={styles.inputGroup}>
-            <View style={styles.labelRow}>
-              <Text style={styles.inputLabel}>PASSWORD O CODICE OTP *</Text>
-              <Pressable onPress={() => setShowPassword((prev) => !prev)}>
-                <Text style={styles.toggleVisibilityText}>
-                  {showPassword ? 'Nascondi' : 'Mostra'}
-                </Text>
-              </Pressable>
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Brand Header */}
+          <View style={styles.brandContainer}>
+            <View style={styles.logoBadge}>
+              <Image source={APP_LOGO} style={styles.logoImage} resizeMode="contain" />
             </View>
-            <TextInput
-              style={styles.textInput}
-              value={passwordOrOtp}
-              onChangeText={(val) => {
-                setPasswordOrOtp(val);
-                if (errorMsg) setErrorMsg(null);
-              }}
-              placeholder="Password Trainer o Codice OTP Cliente"
-              placeholderTextColor={colors.textMuted}
-              secureTextEntry={!showPassword}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
+            <Text style={styles.appTitle}>MY TRAIN UP</Text>
+            <Text style={styles.appSubtitle}>Personal Gym Hub & Workout Tracking</Text>
+            <View style={styles.roleGuardPill}>
+              <Text style={styles.roleGuardText}>SISTEMA AD ACCESSO PROTETTO (RBAC)</Text>
+            </View>
           </View>
 
-          <Pressable
-            onPress={handleLogin}
-            disabled={loading}
-            style={({ pressed }) => [
-              styles.loginButton,
-              { opacity: pressed || loading ? 0.85 : 1 },
-            ]}
-            accessibilityRole="button"
-            accessibilityLabel="Accedi al tuo account"
-          >
-            {loading ? (
-              <ActivityIndicator color="#0F172A" />
-            ) : (
-              <Text style={styles.loginButtonText}>ACCEDI A MY TRAIN UP ➔</Text>
-            )}
-          </Pressable>
-        </Card>
-      </ScrollView>
-    </KeyboardAvoidingView>
+          {/* Error Banner */}
+          {errorMsg && (
+            <View style={styles.errorBanner}>
+              <Text style={styles.errorIcon}>⚠️</Text>
+              <Text style={styles.errorText}>{errorMsg}</Text>
+            </View>
+          )}
+
+          {/* Smart Unified Login Card */}
+          <Card style={styles.formCard}>
+            <Text style={[typography.h3, { marginBottom: 6 }]}>Accedi all'Applicazione</Text>
+            <Text style={styles.formSubtitle}>
+              Inserisci il tuo Username o Nome e la tua Password o il Codice OTP temporaneo per entrare nel sistema.
+            </Text>
+
+            {/* Campo 1: Username o Nome */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>USERNAME O NOME *</Text>
+              <TextInput
+                style={styles.textInput}
+                value={identifier}
+                onChangeText={(val) => {
+                  setIdentifier(val);
+                  if (errorMsg) setErrorMsg(null);
+                }}
+                placeholder="es. lorenzo oppure Mario"
+                placeholderTextColor={colors.textMuted}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              <Text style={styles.inputHint}>
+                Inserisci il tuo username o il nome comunicato al tuo Trainer.
+              </Text>
+            </View>
+
+            {/* Campo 2: Password o Codice OTP */}
+            <View style={styles.inputGroup}>
+              <View style={styles.labelRow}>
+                <Text style={styles.inputLabel}>PASSWORD O CODICE OTP *</Text>
+                <Pressable onPress={() => setShowSecret((prev) => !prev)}>
+                  <Text style={styles.toggleVisibilityText}>
+                    {showSecret ? 'Nascondi' : 'Mostra'}
+                  </Text>
+                </Pressable>
+              </View>
+              <TextInput
+                style={styles.textInput}
+                value={secret}
+                onChangeText={(val) => {
+                  setSecret(val);
+                  if (errorMsg) setErrorMsg(null);
+                }}
+                placeholder="Inserisci password o codice OTP"
+                placeholderTextColor={colors.textMuted}
+                secureTextEntry={!showSecret}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              <Text style={styles.inputHint}>
+                Usa la tua password se hai già completato il profilo, oppure il codice OTP al primo accesso.
+              </Text>
+            </View>
+
+            {/* Pulsante Accedi */}
+            <Pressable
+              onPress={handleLogin}
+              disabled={loading}
+              style={({ pressed }) => [
+                styles.loginButton,
+                { opacity: pressed || loading ? 0.85 : 1 },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="Accedi"
+            >
+              {loading ? (
+                <ActivityIndicator color="#0F172A" />
+              ) : (
+                <Text style={styles.loginButtonText}>ACCEDI ➔</Text>
+              )}
+            </Pressable>
+          </Card>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </ScreenBackgroundWrapper>
   );
 };
@@ -282,13 +297,18 @@ const styles = StyleSheet.create({
     color: colors.text,
     minHeight: layout.minTouchTarget,
   },
+  inputHint: {
+    fontSize: 11,
+    color: colors.textMuted,
+    marginTop: 5,
+  },
   loginButton: {
     backgroundColor: colors.accent,
     borderRadius: 10,
     paddingVertical: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 6,
+    marginTop: 8,
     minHeight: layout.minTouchTarget,
   },
   loginButtonText: {

@@ -177,8 +177,23 @@ export const ImmersiveTimerOverlay: React.FC<ImmersiveTimerOverlayProps> = ({
         setTimeLeft((prev) => {
           if (prev <= 1) {
             if (intervalRef.current) clearInterval(intervalRef.current);
-            triggerAlarm();
-            return 0;
+            if (timerMode === 'work') {
+              // Rigid work timer: plays alarm sound, triggers onComplete and auto-closes
+              try {
+                if (player) {
+                  player.loop = false;
+                  player.play();
+                }
+              } catch (e) {}
+              try {
+                Vibration.vibrate([0, 500, 200, 500]);
+              } catch (e) {}
+              onComplete();
+              return 0;
+            } else {
+              triggerAlarm();
+              return 0;
+            }
           }
           return prev - 1;
         });
@@ -247,11 +262,12 @@ export const ImmersiveTimerOverlay: React.FC<ImmersiveTimerOverlayProps> = ({
       transparent
       visible={visible}
       animationType="fade"
-      onRequestClose={handleDismiss}
+      onRequestClose={timerMode === 'work' ? handleSkip : handleDismiss}
     >
       <View
         style={[
           styles.overlayContainer,
+          timerMode === 'work' ? styles.overlayContainerWork : styles.overlayContainerRest,
           isAlarmRinging && styles.overlayContainerAlarm,
           { paddingBottom: insets.bottom + 20 },
         ]}
@@ -262,23 +278,21 @@ export const ImmersiveTimerOverlay: React.FC<ImmersiveTimerOverlayProps> = ({
             <View
               style={[
                 styles.recBadge,
-                timerMode === 'work' && styles.recBadgeWork,
+                timerMode === 'work' ? styles.recBadgeWork : styles.recBadgeRest,
                 isAlarmRinging && styles.recBadgeAlarm,
               ]}
             >
               <Text
                 style={[
                   styles.recTitle,
-                  timerMode === 'work' && styles.recTitleWork,
+                  timerMode === 'work' ? styles.recTitleWork : styles.recTitleRest,
                   isAlarmRinging && styles.recTitleAlarm,
                 ]}
               >
                 {isAlarmRinging
-                  ? timerMode === 'work'
-                    ? '🚨 LAVORO COMPLETATO!'
-                    : '🚨 SVEGLIA RECUPERO ATTIVA'
+                  ? '🚨 SVEGLIA RECUPERO ATTIVA'
                   : timerMode === 'work'
-                  ? '🔥 LAVORO ATTIVO (ISOMETRIA)'
+                  ? '⚡ SOTTO SFORZO • ISOMETRIA ATTIVA'
                   : '⏱ TEMPO DI RECUPERO'}
               </Text>
             </View>
@@ -292,11 +306,12 @@ export const ImmersiveTimerOverlay: React.FC<ImmersiveTimerOverlayProps> = ({
             )}
           </View>
 
+          {/* Top Close / Stop button */}
           <Pressable
-            onPress={handleDismiss}
+            onPress={timerMode === 'work' ? handleSkip : handleDismiss}
             style={styles.closeOverlayBtn}
             accessibilityRole="button"
-            accessibilityLabel="Chiudi timer"
+            accessibilityLabel={timerMode === 'work' ? "Stop e avanza" : "Chiudi timer"}
           >
             <Text style={styles.closeOverlayBtnText}>✕</Text>
           </Pressable>
@@ -307,7 +322,7 @@ export const ImmersiveTimerOverlay: React.FC<ImmersiveTimerOverlayProps> = ({
           <View
             style={[
               styles.timerCircleOuter,
-              timerMode === 'work' && styles.timerCircleOuterWork,
+              timerMode === 'work' ? styles.timerCircleOuterWork : styles.timerCircleOuterRest,
               isAlarmRinging && styles.timerCircleOuterAlarm,
             ]}
           >
@@ -315,7 +330,8 @@ export const ImmersiveTimerOverlay: React.FC<ImmersiveTimerOverlayProps> = ({
               <Text
                 style={[
                   styles.giantTimerText,
-                  timerMode === 'work' && !isAlarmRinging && styles.giantTimerTextWork,
+                  timerMode === 'work' && styles.giantTimerTextWork,
+                  timerMode !== 'work' && !isAlarmRinging && styles.giantTimerTextRest,
                   isAlarmRinging && styles.giantTimerTextAlarm,
                 ]}
               >
@@ -323,30 +339,23 @@ export const ImmersiveTimerOverlay: React.FC<ImmersiveTimerOverlayProps> = ({
               </Text>
               <Text style={[styles.secondsLabel, isAlarmRinging && styles.secondsLabelAlarm]}>
                 {isAlarmRinging
-                  ? timerMode === 'work'
-                    ? '⏰ TEMPO DI LAVORO TERMINATO!'
-                    : '⏰ TEMPO SCADUTO!'
+                  ? '⏰ TEMPO SCADUTO!'
+                  : timerMode === 'work'
+                  ? `⚡ Tieni la posizione! ${timeLeft}s`
                   : `${timeLeft}s rimanenti`}
               </Text>
 
               {isAlarmRinging && (
-                <View
-                  style={[
-                    styles.alarmNoticeBadge,
-                    timerMode === 'work' && styles.alarmNoticeBadgeWork,
-                  ]}
-                >
-                  <Text style={styles.alarmNoticeText}>
-                    {timerMode === 'work'
-                      ? 'CONFERMA PER AVVIARE IL RECUPERO'
-                      : 'SPEGNI PER CONTINUARE'}
-                  </Text>
+                <View style={styles.alarmNoticeBadge}>
+                  <Text style={styles.alarmNoticeText}>SPEGNI PER CONTINUARE</Text>
                 </View>
               )}
 
               {!isAlarmRinging && !isRunning && (
-                <View style={styles.pausedBadge}>
-                  <Text style={styles.pausedBadgeText}>IN PAUSA</Text>
+                <View style={[styles.pausedBadge, timerMode === 'work' && styles.pausedBadgeWork]}>
+                  <Text style={[styles.pausedBadgeText, timerMode === 'work' && styles.pausedBadgeTextWork]}>
+                    IN PAUSA
+                  </Text>
                 </View>
               )}
             </View>
@@ -362,16 +371,16 @@ export const ImmersiveTimerOverlay: React.FC<ImmersiveTimerOverlayProps> = ({
                   backgroundColor: isAlarmRinging
                     ? colors.danger
                     : timerMode === 'work'
-                    ? colors.warning
-                    : colors.accent,
+                    ? '#0EA5E9'
+                    : '#EA580C',
                 },
               ]}
             />
           </View>
         </View>
 
-        {/* Quick Adjustment Pills (-15s, +15s, +30s) */}
-        {!isAlarmRinging && (
+        {/* Quick Adjustment Pills (-15s, +15s, +30s) - ONLY in rest mode */}
+        {!isAlarmRinging && timerMode !== 'work' && (
           <View style={styles.adjustRow}>
             <Pressable
               onPress={() => handleAddSeconds(-15)}
@@ -401,24 +410,13 @@ export const ImmersiveTimerOverlay: React.FC<ImmersiveTimerOverlayProps> = ({
           <View style={styles.alarmActionRow}>
             <Pressable
               onPress={handleStopAlarm}
-              style={[
-                styles.stopAlarmButton,
-                timerMode === 'work' && styles.stopAlarmButtonWork,
-              ]}
+              style={styles.stopAlarmButton}
               accessibilityRole="button"
-              accessibilityLabel={
-                timerMode === 'work'
-                  ? 'Completa fase attiva e avvia recupero'
-                  : 'Spegni sveglia e continua allenamento'
-              }
+              accessibilityLabel="Spegni sveglia e continua allenamento"
             >
-              <Text style={styles.stopAlarmButtonIcon}>
-                {timerMode === 'work' ? '✓' : '🔔'}
-              </Text>
+              <Text style={styles.stopAlarmButtonIcon}>🔔</Text>
               <Text style={styles.stopAlarmButtonText}>
-                {timerMode === 'work'
-                  ? '✓ COMPLETA & AVVIA RECUPERO'
-                  : 'SPEGNI SVEGLIA & CONTINUA'}
+                SPEGNI SVEGLIA & CONTINUA
               </Text>
             </Pressable>
           </View>
@@ -428,22 +426,43 @@ export const ImmersiveTimerOverlay: React.FC<ImmersiveTimerOverlayProps> = ({
               onPress={handleTogglePause}
               style={[
                 styles.actionButton,
-                isRunning ? styles.pauseButton : styles.resumeButton,
+                isRunning
+                  ? styles.pauseButton
+                  : timerMode === 'work'
+                  ? styles.resumeButtonWork
+                  : styles.resumeButton,
               ]}
+              accessibilityRole="button"
+              accessibilityLabel={isRunning ? "Metti in pausa" : "Riprendi timer"}
             >
-              <Text style={styles.actionButtonText}>
+              <Text style={[styles.actionButtonText, { fontSize: 15 }]}>
                 {isRunning ? '⏸ PAUSA' : '▶ RIPRENDI'}
               </Text>
             </Pressable>
 
-            <Pressable
-              onPress={handleSkip}
-              style={[styles.actionButton, styles.skipButton]}
-            >
-              <Text style={[styles.actionButtonText, styles.skipButtonText]}>
-                ⏭ SALTA & COMPLETA
-              </Text>
-            </Pressable>
+            {timerMode === 'work' ? (
+              <Pressable
+                onPress={handleSkip}
+                style={[styles.actionButton, styles.stopWorkButton]}
+                accessibilityRole="button"
+                accessibilityLabel="Stop e passa allo step successivo"
+              >
+                <Text style={[styles.actionButtonText, styles.stopWorkButtonText]}>
+                  ⏹ STOP / AVANTI
+                </Text>
+              </Pressable>
+            ) : (
+              <Pressable
+                onPress={handleSkip}
+                style={[styles.actionButton, styles.skipButton]}
+                accessibilityRole="button"
+                accessibilityLabel="Salta recupero e completa"
+              >
+                <Text style={[styles.actionButtonText, styles.skipButtonText]}>
+                  ⏭ SALTA & COMPLETA
+                </Text>
+              </Pressable>
+            )}
           </View>
         )}
       </View>
@@ -459,6 +478,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingTop: 54,
     paddingBottom: 40,
+  },
+  overlayContainerWork: {
+    backgroundColor: 'rgba(3, 14, 28, 0.98)',
+  },
+  overlayContainerRest: {
+    backgroundColor: 'rgba(18, 8, 4, 0.96)',
   },
   overlayContainerAlarm: {
     backgroundColor: 'rgba(25, 6, 6, 0.96)',
@@ -647,20 +672,57 @@ const styles = StyleSheet.create({
     shadowColor: colors.emerald,
   },
   recBadgeWork: {
-    backgroundColor: 'rgba(245, 158, 11, 0.2)',
-    borderWidth: 1,
-    borderColor: colors.warning,
+    backgroundColor: 'rgba(14, 165, 233, 0.2)',
+    borderWidth: 1.5,
+    borderColor: '#0EA5E9',
   },
   recTitleWork: {
-    color: colors.warning,
+    color: '#38BDF8',
+    fontWeight: '900',
+    letterSpacing: 1.2,
+  },
+  recBadgeRest: {
+    backgroundColor: 'rgba(234, 88, 12, 0.2)',
+    borderWidth: 1.5,
+    borderColor: '#EA580C',
+  },
+  recTitleRest: {
+    color: '#FB923C',
+    fontWeight: '900',
+    letterSpacing: 1.2,
   },
   timerCircleOuterWork: {
-    borderColor: 'rgba(245, 158, 11, 0.6)',
-    backgroundColor: 'rgba(245, 158, 11, 0.08)',
-    borderWidth: 4,
+    borderColor: '#0EA5E9',
+    backgroundColor: 'rgba(14, 165, 233, 0.08)',
+    borderWidth: 5,
+    shadowColor: '#0EA5E9',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 24,
+    elevation: 12,
+  },
+  timerCircleOuterRest: {
+    borderColor: '#EA580C',
+    backgroundColor: 'rgba(234, 88, 12, 0.08)',
+    borderWidth: 5,
+    shadowColor: '#EA580C',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 24,
+    elevation: 12,
   },
   giantTimerTextWork: {
-    color: colors.warning,
+    color: '#38BDF8',
+  },
+  giantTimerTextRest: {
+    color: '#FB923C',
+  },
+  pausedBadgeWork: {
+    backgroundColor: 'rgba(14, 165, 233, 0.25)',
+    borderColor: '#0EA5E9',
+  },
+  pausedBadgeTextWork: {
+    color: '#38BDF8',
   },
   alarmNoticeBadgeWork: {
     backgroundColor: colors.emeraldDark,
@@ -691,10 +753,24 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   resumeButton: {
-    backgroundColor: colors.warning,
+    backgroundColor: '#EA580C',
+  },
+  resumeButtonWork: {
+    backgroundColor: '#0EA5E9',
   },
   skipButton: {
-    backgroundColor: colors.accent,
+    backgroundColor: '#EA580C',
+  },
+  stopWorkButton: {
+    backgroundColor: 'rgba(239, 68, 68, 0.18)',
+    borderWidth: 1.5,
+    borderColor: '#EF4444',
+  },
+  stopWorkButtonText: {
+    color: '#FEE2E2',
+    fontWeight: '900',
+    fontSize: 14,
+    letterSpacing: 0.5,
   },
   actionButtonText: {
     fontSize: 14,

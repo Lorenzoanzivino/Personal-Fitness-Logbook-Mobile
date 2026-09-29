@@ -28,7 +28,9 @@ export const RootStackNavigator: React.FC = () => {
   }
 
   const isClientOnboardingRequired =
-    isAuthenticated && user?.role === 'CLIENT' && user?.is_profile_completed === false;
+    isAuthenticated &&
+    user?.role === 'CLIENT' &&
+    (user?.is_onboarded === false || user?.is_profile_completed === false);
 
   return (
     <Stack.Navigator

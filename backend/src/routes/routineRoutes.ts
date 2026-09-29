@@ -14,6 +14,12 @@ export async function routineRoutes(fastify: FastifyInstance) {
     routineController.createRoutine
   );
 
+  fastify.put(
+    '/api/v1/routines/:id',
+    { preHandler: [fastify.authenticate] },
+    routineController.updateRoutine
+  );
+
   fastify.delete(
     '/api/v1/routines/:id',
     { preHandler: [fastify.authenticate] },

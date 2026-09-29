@@ -10,6 +10,7 @@ import {
   Alert,
   Platform,
   RefreshControl,
+  Image,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { colors } from '../theme/colors';
@@ -45,7 +46,6 @@ export const ClientsScreen: React.FC = () => {
   // New Client Form State
   const [newClientFirstName, setNewClientFirstName] = useState('');
   const [newClientLastName, setNewClientLastName] = useState('');
-  const [newClientGoals, setNewClientGoals] = useState('');
   const [isCreatingClient, setIsCreatingClient] = useState(false);
   const [provisionSuccess, setProvisionSuccess] = useState<{
     username: string;
@@ -157,15 +157,13 @@ export const ClientsScreen: React.FC = () => {
     try {
       const res = await createClientAccount(
         cleanFirstName,
-        cleanLastName,
-        newClientGoals.trim() || undefined
+        cleanLastName
       );
 
       if (res.success && res.otp) {
         setProvisionSuccess({ username: cleanFirstName, otp: res.otp });
         setNewClientFirstName('');
         setNewClientLastName('');
-        setNewClientGoals('');
         showToast('success', `Account per ${cleanFirstName} ${cleanLastName} creato con successo!`);
       } else {
         showToast('error', res.error || 'Errore durante la creazione dell\'account.');
@@ -340,17 +338,6 @@ export const ClientsScreen: React.FC = () => {
               />
             </View>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>OBIETTIVI / NOTE (Opzionale)</Text>
-              <TextInput
-                style={styles.textInput}
-                value={newClientGoals}
-                onChangeText={setNewClientGoals}
-                placeholder="es. Ipertrofia 4x/settimana • Recupero spalla"
-                placeholderTextColor={colors.textMuted}
-              />
-            </View>
-
             <Pressable
               onPress={handleCreateClient}
               disabled={isCreatingClient}
@@ -381,11 +368,11 @@ export const ClientsScreen: React.FC = () => {
               </Text>
               <View style={styles.credRow}>
                 <View style={styles.credItem}>
-                  <Text style={styles.credLabel}>IDENTIFICATIVO / NOME:</Text>
+                  <Text style={styles.credLabel}>NOME PER PRIMO ACCESSO:</Text>
                   <Text style={styles.credValue}>{provisionSuccess.username}</Text>
                 </View>
                 <View style={styles.credItem}>
-                  <Text style={styles.credLabel}>PASSWORD / OTP:</Text>
+                  <Text style={styles.credLabel}>CODICE OTP:</Text>
                   <Text style={styles.credValueOtp}>{provisionSuccess.otp}</Text>
                 </View>
               </View>
@@ -460,14 +447,22 @@ export const ClientsScreen: React.FC = () => {
                 return (
                   <Card key={client.id} style={styles.clientCard}>
                     <View style={styles.clientCardTop}>
-                      <View style={styles.avatarPill}>
-                        <Text style={styles.avatarText}>{initials}</Text>
-                      </View>
+                      {client.avatar_url ? (
+                        <Image
+                          source={{ uri: client.avatar_url }}
+                          style={styles.avatarImage}
+                          resizeMode="cover"
+                        />
+                      ) : (
+                        <View style={styles.avatarPill}>
+                          <Text style={styles.avatarText}>{initials}</Text>
+                        </View>
+                      )}
                       <View style={{ flex: 1, marginLeft: 12 }}>
                         <View style={styles.clientNameRow}>
                           <Text style={styles.clientCardName}>{clientName}</Text>
                           <View style={styles.userHandlePill}>
-                            <Text style={styles.userHandleText}>@{client.username}</Text>
+                            <Text style={styles.userHandleText}>@{client.username.replace(/^@/, '')}</Text>
                           </View>
                         </View>
                         <Text style={styles.clientDateText}>Associato il {createdDate}</Text>
@@ -569,11 +564,23 @@ export const ClientsScreen: React.FC = () => {
               ) : (
                 filteredArchivedClients.map((client) => {
                   const clientName = `${client.first_name} ${client.last_name}`.trim() || client.username;
+                  const initials = clientName.substring(0, 2).toUpperCase();
                   return (
                     <View key={client.id} style={styles.archivedClientCard}>
-                      <View style={{ flex: 1, marginRight: 8 }}>
+                      {client.avatar_url ? (
+                        <Image
+                          source={{ uri: client.avatar_url }}
+                          style={styles.avatarImageArchived}
+                          resizeMode="cover"
+                        />
+                      ) : (
+                        <View style={styles.avatarPillArchived}>
+                          <Text style={styles.avatarTextArchived}>{initials}</Text>
+                        </View>
+                      )}
+                      <View style={{ flex: 1, marginRight: 8, marginLeft: 4 }}>
                         <Text style={styles.archivedClientName}>{clientName}</Text>
-                        <Text style={styles.archivedClientHandle}>@{client.username}</Text>
+                        <Text style={styles.archivedClientHandle}>@{client.username.replace(/^@/, '')}</Text>
                       </View>
                       <View style={styles.archivedActionsRow}>
                         <Pressable
@@ -851,6 +858,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
+  avatarImage: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    overflow: 'hidden',
+  },
   avatarPill: {
     width: 42,
     height: 42,
@@ -864,6 +877,29 @@ const styles = StyleSheet.create({
   avatarText: {
     fontSize: 14,
     fontWeight: '900',
+    color: colors.accent,
+  },
+  avatarImageArchived: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    overflow: 'hidden',
+    marginRight: 8,
+  },
+  avatarPillArchived: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(14, 165, 233, 0.15)',
+    borderWidth: 1,
+    borderColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
+  },
+  avatarTextArchived: {
+    fontSize: 11,
+    fontWeight: '800',
     color: colors.accent,
   },
   clientNameRow: {

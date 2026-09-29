@@ -31,7 +31,45 @@ export const HomeScreen: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
-  const displayName = user?.username || profile.username || profile.first_name || 'Atleta';
+  const rawUsername = user?.username || profile.username;
+  const formattedUsername = rawUsername ? (rawUsername.startsWith('@') ? rawUsername : `@${rawUsername}`) : null;
+  const displayName = profile.first_name || formattedUsername || 'Atleta';
+
+  // Check if today is user's birthday
+  const birthDateStr = user?.birth_date || profile.birth_date;
+  const isBirthday = (() => {
+    if (!birthDateStr) return false;
+    const trimmed = birthDateStr.trim();
+    if (!trimmed) return false;
+
+    const today = new Date();
+    const currentDay = today.getDate();
+    const currentMonth = today.getMonth() + 1; // 1-12
+
+    // Check DD-MM-YYYY or DD/MM/YYYY
+    const dmyMatch = trimmed.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+    if (dmyMatch) {
+      const bDay = parseInt(dmyMatch[1], 10);
+      const bMonth = parseInt(dmyMatch[2], 10);
+      return bDay === currentDay && bMonth === currentMonth;
+    }
+
+    // Check YYYY-MM-DD or YYYY/MM/DD
+    const ymdMatch = trimmed.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+    if (ymdMatch) {
+      const bMonth = parseInt(ymdMatch[2], 10);
+      const bDay = parseInt(ymdMatch[3], 10);
+      return bDay === currentDay && bMonth === currentMonth;
+    }
+
+    // Fallback date parsing
+    const parsed = new Date(trimmed);
+    if (!isNaN(parsed.getTime())) {
+      return parsed.getDate() === currentDay && parsed.getMonth() + 1 === currentMonth;
+    }
+
+    return false;
+  })();
 
   // Calculate Real 7-day stats from Gym workouts
   const sevenDaysAgo = new Date();
@@ -59,9 +97,11 @@ export const HomeScreen: React.FC = () => {
       <View style={styles.heroSection}>
         <View style={styles.heroHeaderRow}>
           <View style={{ flex: 1, marginRight: 12 }}>
-            <Text style={typography.caption}>BENVENUTO NEL TUO LOGBOOK</Text>
+            <Text style={typography.caption}>
+              {isBirthday ? 'OGGI È UN GIORNO SPECIALE! 🎂' : 'BENVENUTO NEL TUO LOGBOOK'}
+            </Text>
             <Text style={typography.h1}>
-              Ciao, {displayName} 👋
+              {isBirthday ? `Buon compleanno, ${displayName}!` : `Ciao, ${displayName} 👋`}
             </Text>
             <Text style={[typography.caption, { color: colors.textSecondary, marginTop: 2 }]}>
               Dashboard e andamento prestazioni in tempo reale.

@@ -13,7 +13,7 @@
 ### I Due Ruoli del Sistema (RBAC)
 1. **Personal Trainer (`TRAINER`)**:
    - **Gestione Allievi**: censimento atleti, generazione di credenziali/codici OTP monouso per il primo onboarding.
-   - **Workout Designer**: creazione, clonazione, modifica e raggruppamento in cartelle mesociclo di schede di allenamento avanzate (serie standard, Warm-up, Stripping/Dropset, Rest-Pause, tempo isometrico).
+   - **Workout Designer**: creazione, clonazione, modifica e raggruppamento in cartelle mesociclo di schede di allenamento modulari **Block-Based** (blocchi `STANDARD`, `SUPERSET`, e `CIRCUIT` a round con recuperi intra-esercizio e fine giro; serie Warm-up, Stripping/Dropset, Rest-Pause, tempo isometrico).
    - **Modalità Delegata**: possibilità di redigere schede direttamente per un atleta specifico (`selectedClient`).
    - **Consultazione Dati (Sola Lettura)**: visualizzazione delle misurazioni corporee e dei log storici dell'atleta. **Regola fondamentale di privacy/isolamento**: il trainer NON può sovrascrivere o cancellare i dati personali o biometrici degli atleti.
 2. **Atleta (`CLIENT`)**:
@@ -90,19 +90,21 @@ Tutti i modelli sono definiti in TypeScript tramite Drizzle ORM in `backend/src/
 3. **`routine_folders`**:
    - Cartelle mesociclo per organizzare le schede (`owner_id` vincolato).
 4. **`workout_routines`**:
-   - Template di scheda (`name`, `description`, `folder_id`, `owner_id`, `created_by_trainer_id`).
-5. **`routine_exercises`**:
-   - Esercizi compresi nella scheda template, ordine, configurazione serie JSONB (`sets_config`: reps, kg target, rest seconds, dropset, rest-pause).
-6. **`workout_sessions`** (Decoupled History):
+   - Template di scheda (`id`, `name`, `description`, `folder_id`, `owner_id`, `created_by_trainer_id`).
+5. **`routine_blocks`** (Block-Based Architecture):
+   - Blocchi strutturati per ogni scheda: `id` (serial PK), `routine_id` (FK verso `workout_routines` ON DELETE CASCADE), `block_type` (`'STANDARD' | 'SUPERSET' | 'CIRCUIT'`), `order_index`, `rounds` (per circuiti, default 1), `rest_between_rounds` (secondi di riposo fine giro, default 0), `created_at`.
+6. **`routine_exercises`**:
+   - Esercizi compresi nei blocchi della scheda template: `id` (serial PK), `block_id` (FK verso `routine_blocks` ON DELETE CASCADE), `routine_id` (FK legacy nullable per backward compatibility), `exercise_id`, `order_index`, `intra_rest_seconds` (riposo specifico intra-esercizio nei circuiti, default 0), configurazione serie JSONB (`sets_config`: reps, kg target, rest seconds, dropset, rest-pause).
+7. **`workout_sessions`** (Decoupled History):
    - `id`: `serial` PK.
    - `owner_id`: utente che ha completato il workout.
    - `routine_id`: FK verso `workout_routines` con `ON DELETE SET NULL`.
    - `name`, `started_at`, `completed_at`, `duration_seconds`, `volume_kg`, `total_sets`, `notes`.
-7. **`workout_session_exercises`**:
+8. **`workout_session_exercises`**:
    - Dettaglio per esercizio completato, log serie JSONB (`sets`: set_number, reps, weight_kg, rpe, band_color, completed).
-8. **`body_measurements`**:
+9. **`body_measurements`**:
    - Rilevazioni impedenziometriche e peso: `id`, `owner_id` (FK `users.id` con `ON DELETE CASCADE`), `recorded_at`, `weight_kg`, `bmi`, `body_fat_pct`, `muscle_mass_kg`, `lean_mass_kg`, `water_pct`, `bone_mass_kg`, `visceral_fat`, `bmr_kcal`, `amr_kcal`, `notes`.
-9. **`exercises`**:
+10. **`exercises`**:
    - Catalogo dei 46 esercizi muscolari standard di sala pesi con `muscle_group`, `exercise_type`, note e link video tutorial YouTube.
 
 ### 3.3 Tuning Risorse per VPS S (Memory Limit < 180 MB)
@@ -149,8 +151,9 @@ backend/src/
 | `PATCH` | `/api/v1/auth/clients/:id/archive` | `TRAINER` | Archiviazione cliente |
 | `PATCH` | `/api/v1/auth/clients/:id/unarchive` | `TRAINER` | Ripristino cliente archiviato |
 | `DELETE` | `/api/v1/auth/clients/:id` | `TRAINER` | Cancellazione definitiva a cascata cliente |
-| `GET` | `/api/v1/routines` | Qualsiasi (JWT) | Recupero schede (proprie o di atleta delegato) |
-| `POST` | `/api/v1/routines` | Qualsiasi (JWT) | Creazione nuova scheda di allenamento |
+| `GET` | `/api/v1/routines` | Qualsiasi (JWT) | Recupero schede (proprie o di atleta delegato) con blocchi ordinati |
+| `POST` | `/api/v1/routines` | Qualsiasi (JWT) | Creazione nuova scheda di allenamento (con blocchi atomici in transazione) |
+| `PUT` | `/api/v1/routines/:id` | Qualsiasi (JWT) | Aggiornamento completo scheda (sostituzione atomica blocchi ed esercizi) |
 | `DELETE` | `/api/v1/routines/:id` | Qualsiasi (JWT) | Eliminazione scheda (solo proprietario/trainer creatore) |
 | `GET` | `/api/v1/workouts` | Qualsiasi (JWT) | Recupero sessioni completate dell'utente |
 | `POST` | `/api/v1/workouts` | Qualsiasi (JWT) | Salvataggio snapshot sessione completata |
@@ -193,11 +196,17 @@ src/
    - Quando il trainer consulta un atleta, attiva lo stato `isReadOnly = true`, inibendo qualsiasi cancellazione o modifica locale/remota.
 4. **`DietContext`**: gestione dei piani nutrizionali PDF memorizzati localmente con associazione a singolo atleta.
 
-### 5.3 Il Live Workout Logger & Motore Tecnico
+### 5.3 Il Live Workout Logger & Motore Tecnico Block-Based
 Nel modale [`WorkoutModal.tsx`](file:///home/its/I_Miei_Progetti/Personal-Fitness-Logbook-Mobile/src/screens/modals/WorkoutModal.tsx):
-- Supporto a serie piramidali, Warm-up, Stripping/Dropset (con micro-recupero) e Rest-Pause.
-- Timer di recupero integrato: alla scadenza del countdown, entra in funzione un loop acustico continuo via `expo-audio` (`alarm.wav`) che suona senza interruzioni finché l'atleta non tocca lo schermo per confermare la serie successiva.
-- Calcolo automatico in tempo reale del tonnellaggio sollevato ($Volume = \sum kg \times reps$).
+- **Esecuzione Block-Based Modulare**:
+  - **Blocco `STANDARD`**: esecuzione lineare convenzionale serie per serie con tempo di recupero inter-serie standard.
+  - **Blocco `SUPERSET`**: esecuzione concatenata di due o più stazioni muscolari senza pausa intermedia e recupero finale.
+  - **Blocco `CIRCUIT` a Round**: loop interattivo che guida l'atleta attraverso $N$ giri (`rounds`). La UI visualizza il badge `🔄 CIRCUITO - GIRO X DI Y`, propone il timer di riposo intra-esercizio (`intra_rest_seconds`) al termine di ciascuna stazione, e attiva il timer di recupero fine giro (`rest_between_rounds`) al completamento dell'ultimo esercizio del round corrente, prima di sbloccare il giro successivo.
+- **Mappatura Decoupled dei Round su Storico**:
+  - Ogni giro del circuito viene mappato internamente su una serie (`set_number: roundNumber`) per ciascun esercizio del blocco. In questo modo, il salvataggio finale congela i carichi reali, le ripetizioni e l'RPE su `workout_session_exercises` preservando al 100% l'integrità del modello immutabile.
+- **Tipologie Serie Speciali**: supporto nativo a piramidali, Warm-up, Stripping/Dropset (con micro-recupero) e Rest-Pause.
+- **Timer di Recupero & Sveglia Continua**: alla scadenza di qualsiasi countdown (inter-serie, intra-esercizio o fine giro circuito), si attiva un allarme sonoro in loop continuo tramite `expo-audio` (`alarm.wav`) che suona ad alto volume finché l'atleta non interagisce col display.
+- **Calcolo Tonnellaggio Real-Time**: volume cumulato istantaneo calcolato dinamicamente ($Volume = \sum kg \times reps$).
 
 ### 5.4 Partizionamento Locale e Risoluzione Conflitti
 Tutti i service di storage locale (`measurementStorage.ts`, `gymStorage.ts`, `profileService.ts`) utilizzano chiavi partizionate per `userId`:

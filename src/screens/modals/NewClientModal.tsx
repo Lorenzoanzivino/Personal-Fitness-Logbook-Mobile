@@ -32,7 +32,6 @@ export const NewClientModal: React.FC<NewClientModalProps> = ({
 
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
-  const [goals, setGoals] = useState('');
   const [loading, setLoading] = useState(false);
   const [createdResult, setCreatedResult] = useState<{ username: string; otp: string } | null>(null);
 
@@ -73,19 +72,13 @@ export const NewClientModal: React.FC<NewClientModalProps> = ({
     setCreatedResult(null);
 
     try {
-      // L'app genera l'username dietro le quinte usando il Nome
-      const res = await createClientAccount(
-        cleanFirstName,
-        cleanLastName,
-        goals.trim() || undefined
-      );
+      const res = await createClientAccount(cleanFirstName, cleanLastName);
 
       if (res.success && res.otp) {
         const username = cleanFirstName;
         setCreatedResult({ username, otp: res.otp });
         setFirstName('');
         setLastName('');
-        setGoals('');
         showToast('success', `Account per ${cleanFirstName} ${cleanLastName} creato con successo!`);
         onClientCreated?.(username, res.otp);
       } else {
@@ -120,7 +113,7 @@ export const NewClientModal: React.FC<NewClientModalProps> = ({
         </View>
 
         <Text style={styles.description}>
-          Inserisci Nome e Cognome dell'atleta. L'app genererà le credenziali con un codice OTP di accesso perpetuo.
+          Inserisci Nome e Cognome dell'atleta. L'app genererà un codice OTP per consentire all'allievo di effettuare il suo primo accesso e configurare il profilo.
         </Text>
 
         <ScrollView showsVerticalScrollIndicator={false} style={styles.scroll}>
@@ -151,18 +144,6 @@ export const NewClientModal: React.FC<NewClientModalProps> = ({
                 placeholderTextColor={colors.textMuted}
                 autoCapitalize="words"
                 autoCorrect={false}
-              />
-            </View>
-
-            {/* Campo 3: Obiettivi (Opzionale) */}
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>OBIETTIVI (Opzionale)</Text>
-              <TextInput
-                style={styles.textInput}
-                value={goals}
-                onChangeText={setGoals}
-                placeholder="es. Ipertrofia 4x/settimana • Definizione"
-                placeholderTextColor={colors.textMuted}
               />
             </View>
 
@@ -197,7 +178,7 @@ export const NewClientModal: React.FC<NewClientModalProps> = ({
               <View style={styles.credRow}>
                 <View style={styles.credItem}>
                   <Text style={styles.credLabel}>IDENTIFICATIVO / NOME:</Text>
-                  <Text style={styles.credValue}>{createdResult.username}</Text>
+                  <Text style={styles.credValue}>@{createdResult.username.replace(/^@/, '')}</Text>
                 </View>
                 <View style={styles.credItem}>
                   <Text style={styles.credLabel}>PASSWORD / OTP:</Text>

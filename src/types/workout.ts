@@ -15,6 +15,8 @@ export type SetType = 'normal' | 'warmup' | 'dropset' | 'rest_pause';
 
 export type BandAssistance = 'none' | 'light' | 'medium' | 'heavy' | 'weighted';
 
+export type RoutineBlockType = 'STANDARD' | 'SUPERSET' | 'CIRCUIT';
+
 export interface RoutineFolder {
   id: string;
   name: string;
@@ -95,21 +97,35 @@ export interface RoutineExerciseSet {
   band_assistance?: BandAssistance;
   dropset_weight_kg?: number | null;
   drops?: SetDropStep[];
+  drop_percentage?: number | null;
   rest_seconds: number;
   notes?: string | null;
 }
 
 export interface RoutineExercise {
   id?: number;
+  block_id?: number;
   routine_id?: number;
   exercise_id: number;
   exercise_order: number;
+  intra_rest_seconds?: number;
   superset_group?: string | null;
   custom_description?: string | null;
   custom_video_url?: string | null;
   notes?: string | null;
   exercise?: Exercise;
   sets: RoutineExerciseSet[];
+}
+
+export interface RoutineBlock {
+  id?: number;
+  routine_id?: number;
+  block_type: RoutineBlockType;
+  order_index: number;
+  rounds: number;
+  rest_between_rounds: number;
+  created_at?: string;
+  exercises?: RoutineExercise[];
 }
 
 export interface WorkoutRoutine {
@@ -121,8 +137,10 @@ export interface WorkoutRoutine {
   description?: string | null;
   workout_type?: string | null;
   duration_weeks: number;
+  current_week?: number;
   created_at: string;
   updated_at: string;
+  blocks?: RoutineBlock[];
   exercises?: RoutineExercise[];
   owner_id?: string;
 }

@@ -230,8 +230,13 @@ export const GymProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
       // 2. Sincronizzazione in tempo reale con il server Fastify
       try {
+        const fetchExPromise =
+          userRole === 'TRAINER'
+            ? apiService.fetchExercises()
+            : Promise.resolve({ success: false, data: [] as any[] });
+
         const [remoteEx, remoteRout, remoteWork, remoteFold] = await Promise.all([
-          apiService.fetchExercises(),
+          fetchExPromise,
           apiService.fetchRoutinesByOwner(),
           apiService.fetchWorkoutsByOwner(),
           apiService.fetchFoldersByOwner(),
@@ -448,6 +453,19 @@ export const GymProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
     }
 
+    // 1. Prova aggiornamento su backend remoto
+    try {
+      const remoteRes = await apiService.updateRoutine(id, data);
+      if (remoteRes.success && remoteRes.data) {
+        const updated = routines.map((r) => (r.id === id ? remoteRes.data! : r));
+        setRoutines(updated);
+        await gymStorage.saveRoutines(updated);
+        return;
+      }
+    } catch {
+      // Fallback offline
+    }
+
     const now = new Date().toISOString();
     const updated = routines.map((r) => (r.id === id ? { ...r, ...data, updated_at: now } : r));
     setRoutines(updated);
@@ -577,6 +595,20 @@ export const GymProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         const updated = [remoteRes.data, ...workouts.filter((w) => w.id !== remoteRes.data!.id)];
         setWorkouts(updated);
         await gymStorage.saveWorkouts(updated);
+
+        // Se la sessione apparteneva a una scheda, ricarica le schede per sincronizzare l'eventuale progressione di settimana
+        if (data.routine_id) {
+          try {
+            const routinesRes = await apiService.fetchRoutinesByOwner();
+            if (routinesRes.success && routinesRes.data) {
+              setRoutines(routinesRes.data);
+              await gymStorage.saveRoutines(routinesRes.data);
+            }
+          } catch {
+            // Ignora se la chiamata fallisce
+          }
+        }
+
         return remoteRes.data;
       }
     } catch {
@@ -594,6 +626,35 @@ export const GymProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const updated = [newWorkout, ...workouts];
     setWorkouts(updated);
     await gymStorage.saveWorkouts(updated);
+
+    // Fallback offline: incremento settimana se completata al 100%
+    if (data.routine_id) {
+      let totalSets = 0;
+      let completedSets = 0;
+      data.exercises?.forEach((ex) => {
+        ex.sets?.forEach((s) => {
+          totalSets++;
+          if (s.completed !== false) completedSets++;
+        });
+      });
+      if (totalSets > 0 && completedSets === totalSets) {
+        const updatedRoutines = routines.map((r) => {
+          if (r.id === data.routine_id) {
+            const maxW = r.duration_weeks || 4;
+            const curW = r.current_week || 1;
+            return {
+              ...r,
+              current_week: curW < maxW ? curW + 1 : curW,
+              updated_at: now,
+            };
+          }
+          return r;
+        });
+        setRoutines(updatedRoutines);
+        gymStorage.saveRoutines(updatedRoutines);
+      }
+    }
+
     return newWorkout;
   };
 

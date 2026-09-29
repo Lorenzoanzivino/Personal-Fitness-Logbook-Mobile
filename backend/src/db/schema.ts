@@ -29,6 +29,7 @@ export const users = pgTable('users', {
   heightCm: numeric('height_cm', { precision: 5, scale: 2 }),
   avatarUrl: text('avatar_url'),
   email: varchar('email', { length: 255 }),
+  isOnboarded: boolean('is_onboarded').default(false).notNull(),
   isProfileCompleted: boolean('is_profile_completed').default(false),
   rawOtp: varchar('raw_otp', { length: 20 }),
   notes: text('notes'),
@@ -46,7 +47,7 @@ export const otps = pgTable('otps', {
     .references(() => users.id, { onDelete: 'cascade' }),
   trainerName: varchar('trainer_name', { length: 150 }).notNull(),
   clientId: varchar('client_id', { length: 64 }).references(() => users.id, {
-    onDelete: 'set null',
+    onDelete: 'cascade',
   }),
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
@@ -90,6 +91,7 @@ export const workoutRoutines = pgTable('workout_routines', {
   description: text('description'),
   workoutType: varchar('workout_type', { length: 50 }),
   durationWeeks: integer('duration_weeks').default(4).notNull(),
+  currentWeek: integer('current_week').default(1).notNull(),
   ownerId: varchar('owner_id', { length: 64 })
     .notNull()
     .references(() => users.id, { onDelete: 'cascade' }),
@@ -97,15 +99,31 @@ export const workoutRoutines = pgTable('workout_routines', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
-export const routineExercises = pgTable('routine_exercises', {
+export const routineBlocks = pgTable('routine_blocks', {
   id: serial('id').primaryKey(),
   routineId: integer('routine_id')
     .notNull()
     .references(() => workoutRoutines.id, { onDelete: 'cascade' }),
+  blockType: varchar('block_type', { length: 20 }).default('STANDARD').notNull(), // 'STANDARD' | 'SUPERSET' | 'CIRCUIT'
+  orderIndex: integer('order_index').default(1).notNull(),
+  rounds: integer('rounds').default(1).notNull(),
+  restBetweenRounds: integer('rest_between_rounds').default(0),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const routineExercises = pgTable('routine_exercises', {
+  id: serial('id').primaryKey(),
+  blockId: integer('block_id').references(() => routineBlocks.id, {
+    onDelete: 'cascade',
+  }),
+  routineId: integer('routine_id').references(() => workoutRoutines.id, {
+    onDelete: 'cascade',
+  }),
   exerciseId: integer('exercise_id').references(() => exercises.id, {
     onDelete: 'set null',
   }),
   exerciseOrder: integer('exercise_order').default(1).notNull(),
+  intraRestSeconds: integer('intra_rest_seconds').default(0),
   supersetGroup: varchar('superset_group', { length: 20 }),
   customDescription: text('custom_description'),
   customVideoUrl: text('custom_video_url'),
@@ -125,6 +143,7 @@ export const routineExerciseSets = pgTable('routine_exercise_sets', {
   bandAssistance: varchar('band_assistance', { length: 30 }).default('none'),
   dropsetWeightKg: numeric('dropset_weight_kg', { precision: 6, scale: 2 }),
   drops: jsonb('drops').$type<SetDropStep[]>().default([]),
+  dropPercentage: numeric('drop_percentage', { precision: 5, scale: 2 }),
   restSeconds: integer('rest_seconds').default(90).notNull(),
   notes: text('notes'),
 });
@@ -243,10 +262,17 @@ export const usersRelations = relations(users, ({ many }) => ({
 export const workoutRoutinesRelations = relations(workoutRoutines, ({ one, many }) => ({
   owner: one(users, { fields: [workoutRoutines.ownerId], references: [users.id] }),
   folder: one(routineFolders, { fields: [workoutRoutines.folderId], references: [routineFolders.id] }),
+  blocks: many(routineBlocks),
+  exercises: many(routineExercises),
+}));
+
+export const routineBlocksRelations = relations(routineBlocks, ({ one, many }) => ({
+  routine: one(workoutRoutines, { fields: [routineBlocks.routineId], references: [workoutRoutines.id] }),
   exercises: many(routineExercises),
 }));
 
 export const routineExercisesRelations = relations(routineExercises, ({ one, many }) => ({
+  block: one(routineBlocks, { fields: [routineExercises.blockId], references: [routineBlocks.id] }),
   routine: one(workoutRoutines, { fields: [routineExercises.routineId], references: [workoutRoutines.id] }),
   exercise: one(exercises, { fields: [routineExercises.exerciseId], references: [exercises.id] }),
   sets: many(routineExerciseSets),

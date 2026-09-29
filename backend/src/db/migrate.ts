@@ -32,15 +32,26 @@ export async function runMigrationsAndSeed() {
       updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
     );
 
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS is_onboarded BOOLEAN DEFAULT FALSE;
+
     -- TABELLA OTPS
     CREATE TABLE IF NOT EXISTS otps (
       code VARCHAR(16) PRIMARY KEY,
       trainer_id VARCHAR(64) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       trainer_name VARCHAR(150) NOT NULL,
-      client_id VARCHAR(64) REFERENCES users(id) ON DELETE SET NULL,
+      client_id VARCHAR(64) REFERENCES users(id) ON DELETE CASCADE,
       expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
       created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
     );
+
+    DO $$
+    BEGIN
+      ALTER TABLE otps DROP CONSTRAINT IF EXISTS otps_client_id_users_id_fk;
+      ALTER TABLE otps DROP CONSTRAINT IF EXISTS otps_client_id_fkey;
+      ALTER TABLE otps ADD CONSTRAINT otps_client_id_fkey FOREIGN KEY (client_id) REFERENCES users(id) ON DELETE CASCADE;
+    EXCEPTION WHEN OTHERS THEN
+      NULL;
+    END $$;
 
     -- CATALOGO ESERCIZI BASE
     CREATE TABLE IF NOT EXISTS exercises (
@@ -73,21 +84,59 @@ export async function runMigrationsAndSeed() {
       description TEXT,
       workout_type VARCHAR(50),
       duration_weeks INT DEFAULT 4 NOT NULL,
+      current_week INT DEFAULT 1 NOT NULL,
       owner_id VARCHAR(64) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
       updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
     );
 
-    CREATE TABLE IF NOT EXISTS routine_exercises (
+    ALTER TABLE workout_routines ADD COLUMN IF NOT EXISTS current_week INT DEFAULT 1 NOT NULL;
+
+    -- BLOCCHI SCHEDA (BLOCK-BASED ARCHITECTURE: STANDARD, SUPERSET, CIRCUIT)
+    CREATE TABLE IF NOT EXISTS routine_blocks (
       id SERIAL PRIMARY KEY,
       routine_id INT NOT NULL REFERENCES workout_routines(id) ON DELETE CASCADE,
+      block_type VARCHAR(20) NOT NULL DEFAULT 'STANDARD',
+      order_index INT NOT NULL DEFAULT 1,
+      rounds INT NOT NULL DEFAULT 1,
+      rest_between_rounds INT DEFAULT 0,
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS routine_exercises (
+      id SERIAL PRIMARY KEY,
+      block_id INT REFERENCES routine_blocks(id) ON DELETE CASCADE,
+      routine_id INT REFERENCES workout_routines(id) ON DELETE CASCADE,
       exercise_id INT REFERENCES exercises(id) ON DELETE SET NULL,
       exercise_order INT NOT NULL DEFAULT 1,
+      intra_rest_seconds INT DEFAULT 0,
       superset_group VARCHAR(20),
       custom_description TEXT,
       custom_video_url TEXT,
       notes TEXT
     );
+
+    -- MIGRATION: Assicura che le nuove colonne esistano su tabelle già presenti
+    ALTER TABLE routine_exercises ADD COLUMN IF NOT EXISTS block_id INT REFERENCES routine_blocks(id) ON DELETE CASCADE;
+    ALTER TABLE routine_exercises ADD COLUMN IF NOT EXISTS intra_rest_seconds INT DEFAULT 0;
+    ALTER TABLE routine_exercises ALTER COLUMN routine_id DROP NOT NULL;
+
+    -- DATA MIGRATION: Se esistono routine_exercises senza blocco, creane uno di default per routine
+    DO $$
+    DECLARE
+      rec RECORD;
+      new_block_id INT;
+    BEGIN
+      FOR rec IN SELECT DISTINCT routine_id FROM routine_exercises WHERE block_id IS NULL AND routine_id IS NOT NULL LOOP
+        INSERT INTO routine_blocks (routine_id, block_type, order_index, rounds, rest_between_rounds)
+        VALUES (rec.routine_id, 'STANDARD', 1, 1, 0)
+        RETURNING id INTO new_block_id;
+
+        UPDATE routine_exercises
+        SET block_id = new_block_id
+        WHERE routine_id = rec.routine_id AND block_id IS NULL;
+      END LOOP;
+    END $$;
 
     CREATE TABLE IF NOT EXISTS routine_exercise_sets (
       id SERIAL PRIMARY KEY,
@@ -100,9 +149,12 @@ export async function runMigrationsAndSeed() {
       band_assistance VARCHAR(30) DEFAULT 'none',
       dropset_weight_kg NUMERIC(6, 2),
       drops JSONB DEFAULT '[]'::jsonb,
+      drop_percentage NUMERIC(5, 2),
       rest_seconds INT NOT NULL DEFAULT 90,
       notes TEXT
     );
+
+    ALTER TABLE routine_exercise_sets ADD COLUMN IF NOT EXISTS drop_percentage NUMERIC(5, 2);
 
     -- =========================================================
     -- LOG STORICI DI ALLENAMENTO (DECOUPLED - IMMUTABILI)
@@ -211,9 +263,12 @@ export async function runMigrationsAndSeed() {
       birthDate: '01-01-1995',
       heightCm: '180',
       email: 'lorenzo.anzivino@example.com',
+      isOnboarded: true,
       isProfileCompleted: true,
     });
     console.log('✅ [SEED] Trainer predefinito inserito.');
+  } else {
+    await client.unsafe("UPDATE users SET is_onboarded = TRUE WHERE role = 'TRAINER';");
   }
 
   // Auto-seed Esercizi di default se tabella vuota

@@ -5,6 +5,8 @@ import * as dotenv from 'dotenv';
 import { authenticate, requireTrainer } from './middleware/auth';
 import { runMigrationsAndSeed } from './db/migrate';
 import { authRoutes } from './routes/authRoutes';
+import { trainerRoutes } from './routes/trainerRoutes';
+import { clientRoutes } from './routes/clientRoutes';
 import { routineRoutes } from './routes/routineRoutes';
 import { workoutRoutes } from './routes/workoutRoutes';
 import { folderRoutes } from './routes/folderRoutes';
@@ -24,6 +26,7 @@ async function buildApp() {
       level: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
     },
     disableRequestLogging: false,
+    ignoreTrailingSlash: true,
   });
 
   // Registrazione CORS per Expo Mobile (LAN, localhost, emulatori)
@@ -45,6 +48,8 @@ async function buildApp() {
   // Registrazione Moduli Rotte REST
   await fastify.register(healthRoutes);
   await fastify.register(authRoutes);
+  await fastify.register(trainerRoutes, { prefix: '/api/v1/trainer' });
+  await fastify.register(clientRoutes);
   await fastify.register(routineRoutes);
   await fastify.register(workoutRoutes);
   await fastify.register(folderRoutes);
@@ -62,6 +67,8 @@ async function start() {
 
     // 2. Avvio Server Fastify
     const app = await buildApp();
+    await app.ready();
+    console.log('📋 [FASTIFY ROUTE TREE]:\n' + app.printRoutes());
     await app.listen({ port, host });
     app.log.info(`🚀 Server Fastify in ascolto su http://${host}:${port}`);
   } catch (err) {

@@ -62,16 +62,37 @@ export class ProfileService {
     dto: UpdateProfileRequestDto
   ): Promise<UserProfile> {
     // TASSATIVO: Un utente può aggiornare unicamente il proprio profilo
+    let usernameToSet: string | undefined = undefined;
+    if (dto.username !== undefined && dto.username.trim() !== '') {
+      const cleanUsername = dto.username.trim().replace(/^@/, '');
+      if (cleanUsername !== authUser.username) {
+        const existingUsers = await db
+          .select()
+          .from(users)
+          .where(eq(users.username, cleanUsername));
+
+        if (existingUsers.length > 0 && existingUsers[0].id !== authUser.id) {
+          throw {
+            statusCode: 409,
+            code: 'CONFLICT',
+            message: `Lo username @${cleanUsername} è già in uso. Scegline un altro.`,
+          };
+        }
+        usernameToSet = cleanUsername;
+      }
+    }
+
     await db
       .update(users)
       .set({
-        firstName: dto.first_name,
-        lastName: dto.last_name,
-        birthDate: dto.birth_date,
+        username: usernameToSet !== undefined ? usernameToSet : undefined,
+        firstName: dto.first_name !== undefined ? dto.first_name : undefined,
+        lastName: dto.last_name !== undefined ? dto.last_name : undefined,
+        birthDate: dto.birth_date !== undefined ? dto.birth_date : undefined,
         heightCm: dto.height_cm ? String(dto.height_cm) : undefined,
         avatarUrl: dto.avatar_url !== undefined ? dto.avatar_url : undefined,
         email: dto.email !== undefined ? dto.email : undefined,
-        isProfileCompleted: dto.is_profile_completed !== undefined ? dto.is_profile_completed : true,
+        isProfileCompleted: dto.is_profile_completed !== undefined ? dto.is_profile_completed : undefined,
         updatedAt: new Date(),
       })
       .where(eq(users.id, authUser.id));

@@ -90,19 +90,19 @@ class AuthService {
   }
 
   /**
-   * Esegue il Login con username e password/OTP
+   * Esegue lo Smart Login unificato con identifier (username o nome) e secret (password o OTP)
    */
   async login(credentials: LoginCredentials): Promise<ApiResponse<AuthSession>> {
-    const cleanUsername = credentials.username.trim();
-    const cleanPasswordOrOtp = credentials.passwordOrOtp.trim();
+    const cleanIdentifier = (credentials.identifier || credentials.username || '').trim();
+    const cleanSecret = (credentials.secret || credentials.passwordOrOtp || '').trim();
 
-    if (!cleanUsername || !cleanPasswordOrOtp) {
+    if (!cleanIdentifier || !cleanSecret) {
       return {
         success: false,
         data: null,
         error: {
           code: 'VALIDATION_ERROR',
-          message: 'Inserisci sia Username che Password/Codice OTP.',
+          message: 'Inserisci sia Username/Nome che Password/Codice OTP.',
         },
       };
     }
@@ -110,12 +110,18 @@ class AuthService {
     // 0. Prova autenticazione con il server Fastify remoto
     try {
       const remoteRes = await apiService.login({
-        username: cleanUsername,
-        passwordOrOtp: cleanPasswordOrOtp,
+        identifier: cleanIdentifier,
+        secret: cleanSecret,
       });
       if (remoteRes.success && remoteRes.data) {
-        apiService.setAuthToken(remoteRes.data.token);
+        if (remoteRes.data.token) {
+          await apiService.setAuthToken(remoteRes.data.token);
+          await AsyncStorage.setItem('@fitness_auth_token', remoteRes.data.token);
+        }
         await this.saveSession(remoteRes.data);
+        return remoteRes;
+      }
+      if (!remoteRes.success && remoteRes.error && remoteRes.error.code !== 'NETWORK_ERROR') {
         return remoteRes;
       }
     } catch {
@@ -125,12 +131,12 @@ class AuthService {
     // A. Verifica Credenziali TRAINER (Lorenzo o configurato via .env)
     const configuredUsername = TRAINER_CONFIG.username.toLowerCase();
     const isTrainerMatch =
-      (cleanUsername.toLowerCase() === configuredUsername ||
-        cleanUsername.toLowerCase() === 'lorenzo' ||
-        cleanUsername.toLowerCase() === 'lorenzoanzivino' ||
-        cleanUsername.toLowerCase() === 'trainer' ||
-        cleanUsername.toLowerCase() === 'admin') &&
-      cleanPasswordOrOtp === TRAINER_CONFIG.password;
+      (cleanIdentifier.toLowerCase() === configuredUsername ||
+        cleanIdentifier.toLowerCase() === 'lorenzo' ||
+        cleanIdentifier.toLowerCase() === 'lorenzoanzivino' ||
+        cleanIdentifier.toLowerCase() === 'trainer' ||
+        cleanIdentifier.toLowerCase() === 'admin') &&
+      cleanSecret === TRAINER_CONFIG.password;
 
     if (isTrainerMatch) {
       const session: AuthSession = {
@@ -145,7 +151,7 @@ class AuthService {
     const provisionedList = await this.getProvisionedClients();
     const matchingClients = provisionedList.filter((c) => {
       if (c.isArchived) return false;
-      const target = cleanUsername.toLowerCase();
+      const target = cleanIdentifier.toLowerCase();
       const usernameMatch = Boolean(c.username && c.username.toLowerCase() === target);
       const firstNameMatch = Boolean(c.first_name && c.first_name.toLowerCase() === target);
       const fullNameMatch = Boolean(`${c.first_name} ${c.last_name}`.trim().toLowerCase() === target);
@@ -154,7 +160,7 @@ class AuthService {
     });
 
     const matchedClient = matchingClients.find((c) => {
-      const inputPassOrOtp = cleanPasswordOrOtp.trim();
+      const inputPassOrOtp = cleanSecret.trim();
       const rawOtp = (c.raw_otp || c.otp || '').trim();
       const storedPassword = (c.password || '').trim();
 
@@ -173,13 +179,14 @@ class AuthService {
         role: 'CLIENT',
         email: matchedClient.email,
         password: matchedClient.password,
+        is_onboarded: matchedClient.is_onboarded ?? false,
         is_profile_completed: matchedClient.is_profile_completed ?? false,
         raw_otp: matchedClient.raw_otp || matchedClient.otp,
         trainer_id: matchedClient.trainer_id,
         trainer_name: matchedClient.trainer_name,
         height_cm: 168,
         birth_date: '01-01-1998',
-        avatar_url: null,
+        avatar_url: matchedClient.avatar_url || null,
       };
 
       const session: AuthSession = {
@@ -202,13 +209,22 @@ class AuthService {
   }
 
   /**
-   * Crea un nuovo account cliente da parte del Trainer e genera il codice OTP (Password iniziale)
-   * Richiede Nome e Cognome obbligatori, genera l'username dal Nome e imposta is_profile_completed = false.
+   * Esegue il Login con Primo Accesso tramite Nome e Codice OTP (delega a smart login)
+   */
+  async loginOtp(firstName: string, otp: string): Promise<ApiResponse<AuthSession>> {
+    return this.login({
+      identifier: firstName,
+      secret: otp,
+    });
+  }
+
+  /**
+   * Crea un nuovo account cliente da parte del Trainer e genera il codice OTP
+   * Accetta ESCLUSIVAMENTE Nome e Cognome.
    */
   async provisionClientAccount(
     firstName: string,
-    lastName: string,
-    notes?: string
+    lastName: string
   ): Promise<ApiResponse<{ client: ProvisionedClient; otp: string }>> {
     const cleanFirstName = firstName.trim();
     const cleanLastName = (lastName || '').trim();
@@ -227,17 +243,14 @@ class AuthService {
       };
     }
 
-    // 0. Prova provisioning su server Fastify
+    // 0. Chiamata al server Fastify
     try {
-      const remoteRes = await apiService.provisionClient({
-        first_name: cleanFirstName,
-        last_name: cleanLastName,
-        notes: notes?.trim(),
-        trainer_id: TRAINER_ADMIN.user.id,
-        trainer_name: `${TRAINER_ADMIN.user.first_name} ${TRAINER_ADMIN.user.last_name}`,
+      const remoteRes = await apiService.createTrainerClient({
+        firstName: cleanFirstName,
+        lastName: cleanLastName,
       });
       if (remoteRes.success && remoteRes.data) {
-        const client = remoteRes.data;
+        const { client, otp } = remoteRes.data;
         const currentClients = await this.getProvisionedClients();
         const updatedList = [client, ...currentClients.filter((c) => c.id !== client.id)];
         await this.saveProvisionedClients(updatedList);
@@ -245,9 +258,16 @@ class AuthService {
           success: true,
           data: {
             client,
-            otp: client.otp,
+            otp,
           },
           error: null,
+        };
+      }
+      if (!remoteRes.success && remoteRes.error && remoteRes.error.code !== 'NETWORK_ERROR') {
+        return {
+          success: false,
+          data: null,
+          error: remoteRes.error,
         };
       }
     } catch {
@@ -257,7 +277,7 @@ class AuthService {
     const currentClients = await this.getProvisionedClients();
     const generatedOtp = this.generateOtp();
     const clientId = generateUUID();
-    const generatedUsername = cleanFirstName;
+    const generatedUsername = `${cleanFirstName.toLowerCase()}.${cleanLastName.toLowerCase()}${Math.floor(10 + Math.random() * 90)}`;
 
     const newClient: ProvisionedClient = {
       id: clientId,
@@ -267,11 +287,10 @@ class AuthService {
       otp: generatedOtp,
       raw_otp: generatedOtp,
       password: '',
+      is_onboarded: false,
       is_profile_completed: false,
       trainer_id: TRAINER_ADMIN.user.id,
       trainer_name: `${TRAINER_ADMIN.user.first_name} ${TRAINER_ADMIN.user.last_name}`,
-      email: `${cleanFirstName.toLowerCase()}@fitnesslogbook.local`,
-      notes: notes?.trim() || 'Account cliente creato dal Trainer',
       created_at: new Date().toISOString(),
       isArchived: false,
     };
@@ -300,6 +319,7 @@ class AuthService {
     const idx = clients.findIndex((c) => c.id === clientId);
     if (idx === -1) return false;
     clients[idx].password = newPassword;
+    clients[idx].is_onboarded = true;
     clients[idx].is_profile_completed = true;
     await this.saveProvisionedClients(clients);
     return true;
@@ -307,7 +327,7 @@ class AuthService {
 
   /**
    * Completa l'onboarding del cliente: imposta la password, l'eventuale username personalizzato,
-   * data di nascita e altezza, e contrassegna is_profile_completed = true.
+   * data di nascita e altezza, e contrassegna is_onboarded e is_profile_completed = true.
    */
   async completeClientOnboarding(
     clientId: string,
@@ -327,6 +347,7 @@ class AuthService {
     if (data.username && data.username.trim()) {
       target.username = data.username.trim();
     }
+    target.is_onboarded = true;
     target.is_profile_completed = true;
 
     await this.saveProvisionedClients(clients);
@@ -358,9 +379,15 @@ class AuthService {
   }
 
   /**
-   * Elimina definitivamente un cliente (Hard Delete a Cascata)
+   * Elimina definitivamente un cliente (Hard Delete a Cascata sia remoto sia locale)
    */
   async hardDeleteClient(clientId: string): Promise<void> {
+    try {
+      await apiService.deleteTrainerClient(clientId);
+    } catch (e) {
+      console.warn('Errore eliminazione remota cliente:', e);
+    }
+
     const clients = await this.getProvisionedClients();
     const updated = clients.filter((c) => c.id !== clientId);
     await this.saveProvisionedClients(updated);
@@ -379,7 +406,11 @@ class AuthService {
     try {
       const json = await AsyncStorage.getItem(STORAGE_KEY_AUTH_SESSION);
       if (json) {
-        return JSON.parse(json);
+        const session = JSON.parse(json);
+        if (session?.token) {
+          await apiService.setAuthToken(session.token);
+        }
+        return session;
       }
       return null;
     } catch {
@@ -392,6 +423,10 @@ class AuthService {
    */
   async saveSession(session: AuthSession): Promise<void> {
     try {
+      if (session?.token) {
+        await apiService.setAuthToken(session.token);
+        await AsyncStorage.setItem('@fitness_auth_token', session.token);
+      }
       await AsyncStorage.setItem(STORAGE_KEY_AUTH_SESSION, JSON.stringify(session));
     } catch (e) {
       console.warn('Errore salvataggio sessione auth:', e);
@@ -403,6 +438,8 @@ class AuthService {
    */
   async clearSession(): Promise<void> {
     try {
+      await apiService.setAuthToken(null);
+      await AsyncStorage.removeItem('@fitness_auth_token');
       await AsyncStorage.removeItem(STORAGE_KEY_AUTH_SESSION);
     } catch (e) {
       console.warn('Errore rimozione sessione auth:', e);

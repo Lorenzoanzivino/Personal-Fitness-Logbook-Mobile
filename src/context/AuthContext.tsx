@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AuthUser, LoginCredentials, ProvisionedClient } from '../types/auth';
 import { UserRole } from '../types/profile';
 import { authService } from '../services/authService';
@@ -13,22 +14,26 @@ interface AuthContextType {
   loading: boolean;
   provisionedClients: ProvisionedClient[];
   login: (credentials: LoginCredentials) => Promise<{ success: boolean; error?: string }>;
+  loginOtp: (data: { firstName: string; otp: string }) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   createClientAccount: (
     firstName: string,
-    lastName: string,
-    notes?: string
+    lastName: string
   ) => Promise<{ success: boolean; otp?: string; error?: string }>;
   completeClientOnboarding: (data: {
-    username?: string;
+    username: string;
+    firstName: string;
+    lastName: string;
     password: string;
-    birthDate?: string;
-    heightCm?: number;
+    height: number;
+    dateOfBirth: string;
+    avatar_url?: string | null;
   }) => Promise<{ success: boolean; error?: string }>;
   archiveClient: (clientId: string) => Promise<void>;
   unarchiveClient: (clientId: string) => Promise<void>;
   hardDeleteClient: (clientId: string) => Promise<void>;
   refreshProvisionedClients: () => Promise<void>;
+  updateUserSession: (userData: Partial<AuthUser>) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -48,15 +53,20 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const checkInitialSession = async () => {
     setLoading(true);
     try {
-      const [savedSession, clients] = await Promise.all([
+      const [savedSession, clients, storedToken] = await Promise.all([
         authService.getStoredSession(),
         authService.getProvisionedClients(),
+        AsyncStorage.getItem('@fitness_auth_token'),
       ]);
 
       setProvisionedClients(clients);
 
-      if (savedSession && savedSession.user && savedSession.token) {
-        apiService.setAuthToken(savedSession.token);
+      const effectiveToken = savedSession?.token || storedToken;
+      if (effectiveToken) {
+        await apiService.setAuthToken(effectiveToken);
+      }
+
+      if (savedSession && savedSession.user && effectiveToken) {
         const userAvatar = await profileService.getUserAvatar(savedSession.user.id);
         const userWithAvatar = {
           ...savedSession.user,
@@ -64,7 +74,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         };
         setUser(userWithAvatar);
         setRole(savedSession.user.role);
-        setToken(savedSession.token);
+        setToken(effectiveToken);
         setIsAuthenticated(true);
         syncWithProfileService(userWithAvatar);
       }
@@ -107,7 +117,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     if (res.success && res.data) {
       const { user: loggedUser, token: loggedToken } = res.data;
-      apiService.setAuthToken(loggedToken);
+      // 1. Imposta immediatamente il Bearer Token su apiService e storage PRIMA di qualsiasi query
+      if (loggedToken) {
+        await apiService.setAuthToken(loggedToken);
+        await AsyncStorage.setItem('@fitness_auth_token', loggedToken);
+      }
+
       const userAvatar = await profileService.getUserAvatar(loggedUser.id);
       const userWithAvatar = {
         ...loggedUser,
@@ -127,8 +142,40 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
   };
 
+  const loginOtp = async (data: {
+    firstName: string;
+    otp: string;
+  }): Promise<{ success: boolean; error?: string }> => {
+    const res = await authService.loginOtp(data.firstName, data.otp);
+
+    if (res.success && res.data) {
+      const { user: loggedUser, token: loggedToken } = res.data;
+      if (loggedToken) {
+        await apiService.setAuthToken(loggedToken);
+        await AsyncStorage.setItem('@fitness_auth_token', loggedToken);
+      }
+      const userAvatar = await profileService.getUserAvatar(loggedUser.id);
+      const userWithAvatar = {
+        ...loggedUser,
+        avatar_url: userAvatar || loggedUser.avatar_url,
+      };
+      setUser(userWithAvatar);
+      setRole(loggedUser.role);
+      setToken(loggedToken);
+      setIsAuthenticated(true);
+      await syncWithProfileService(userWithAvatar);
+      return { success: true };
+    }
+
+    return {
+      success: false,
+      error: res.error?.message || 'Nome o Codice OTP errato.',
+    };
+  };
+
   const logout = async (): Promise<void> => {
-    apiService.setAuthToken(null);
+    await apiService.setAuthToken(null);
+    await AsyncStorage.removeItem('@fitness_auth_token');
     await authService.clearSession();
     await profileService.resetProfile();
     setUser(null);
@@ -144,10 +191,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const createClientAccount = async (
     firstName: string,
-    lastName: string,
-    notes?: string
+    lastName: string
   ): Promise<{ success: boolean; otp?: string; error?: string }> => {
-    const res = await authService.provisionClientAccount(firstName, lastName, notes);
+    const res = await authService.provisionClientAccount(firstName, lastName);
 
     if (res.success && res.data) {
       const { client, otp } = res.data;
@@ -172,26 +218,31 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const completeClientOnboarding = async (data: {
-    username?: string;
+    username: string;
+    firstName: string;
+    lastName: string;
     password: string;
-    birthDate?: string;
-    heightCm?: number;
+    height: number;
+    dateOfBirth: string;
+    avatar_url?: string | null;
   }): Promise<{ success: boolean; error?: string }> => {
     if (!user?.id) {
       return { success: false, error: 'Nessuna sessione attiva.' };
     }
     try {
-      const updatedClient = await authService.completeClientOnboarding(user.id, data);
-      if (!updatedClient) {
-        return { success: false, error: 'Impossibile aggiornare i dati del cliente.' };
+      // 1. Chiamata al backend endpoint PUT /api/v1/clients/onboarding
+      const res = await apiService.completeClientOnboarding(data);
+      if (!res.success || !res.data) {
+        return {
+          success: false,
+          error: res.error?.message || 'Impossibile completare il setup del profilo.',
+        };
       }
 
       const updatedUser: AuthUser = {
         ...user,
-        username: data.username && data.username.trim() ? data.username.trim() : user.username,
-        password: data.password.trim(),
-        birth_date: data.birthDate && data.birthDate.trim() ? data.birthDate.trim() : user.birth_date,
-        height_cm: data.heightCm ? data.heightCm : user.height_cm,
+        ...res.data,
+        is_onboarded: true,
         is_profile_completed: true,
       };
 
@@ -208,7 +259,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         last_name: updatedUser.last_name,
         birth_date: updatedUser.birth_date || '01-01-1998',
         height_cm: updatedUser.height_cm || 170,
-        password: updatedUser.password,
+        avatar_url: updatedUser.avatar_url,
         is_profile_completed: true,
         trainer_id: updatedUser.trainer_id,
         trainer_name: updatedUser.trainer_name,
@@ -245,7 +296,20 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       authService.hardDeleteClient(clientId),
       profileService.hardDeleteClient(clientId),
     ]);
-    await refreshProvisionedClients();
+    // Aggiornamento immediato dello stato locale per far sparire il cliente dalla UI
+    setProvisionedClients((prev) => prev.filter((c) => c.id !== clientId));
+  };
+
+  const updateUserSession = async (userData: Partial<AuthUser>): Promise<void> => {
+    if (!user) return;
+    const updatedUser: AuthUser = {
+      ...user,
+      ...userData,
+    };
+    setUser(updatedUser);
+    if (token) {
+      await authService.saveSession({ user: updatedUser, token });
+    }
   };
 
   return (
@@ -258,6 +322,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         loading,
         provisionedClients,
         login,
+        loginOtp,
         logout,
         createClientAccount,
         completeClientOnboarding,
@@ -265,6 +330,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         unarchiveClient,
         hardDeleteClient,
         refreshProvisionedClients,
+        updateUserSession,
       }}
     >
       {children}

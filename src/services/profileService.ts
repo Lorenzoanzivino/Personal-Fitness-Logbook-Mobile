@@ -153,6 +153,10 @@ export const profileService = {
       return res;
     }
 
+    if (!res.success && res.error && res.error.code !== 'NETWORK_ERROR') {
+      return res;
+    }
+
     currentProfileState = {
       ...currentProfileState,
       ...dto,

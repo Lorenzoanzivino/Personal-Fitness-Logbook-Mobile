@@ -25,6 +25,7 @@
    - [4.1 Il Problema del Design Accoppiato](#41-il-problema-del-design-accoppiato)
    - [4.2 La Soluzione Decoupled (Snapshot Immutabile)](#42-la-soluzione-decoupled-snapshot-immutabile)
    - [4.3 Schema PostgreSQL 16 e Indici](#43-schema-postgresql-16-e-indici)
+   - [4.4 Schema Schede Block-Based e Migrazione Idempotente](#44-schema-schede-block-based-e-migrazione-idempotente)
 5. [Sicurezza, RBAC e Isolamento dei Dati](#5-sicurezza-rbac-e-isolamento-dei-dati)
    - [5.1 Modello di Accesso TRAINER vs CLIENT](#51-modello-di-accesso-trainer-vs-client)
    - [5.2 Autenticazione JWT e Hook PreHandler](#52-autenticazione-jwt-e-hook-prehandler)
@@ -63,10 +64,12 @@ Quando la connessione è attiva, i dati vengono sincronizzati via API REST con i
 4. **`DietContext`**: Gestione dei piani nutrizionali in formato PDF, archiviati tramite `expo-file-system` e visualizzati nativamente.
 
 ### 1.4 Motore di Esecuzione Allenamento (Live Logger)
-Il componente `WorkoutModal.tsx` fornisce l'interfaccia interattiva per l'atleta durante la sessione in palestra:
-- Supporto a serie ordinarie, riscaldamento (Warm-up), Stripping/Dropset e Rest-Pause.
-- Timer di recupero automatico con conteggio visuale e **sveglia acustica continua** (`alarm.wav` tramite `expo-audio`) che suona a ciclo continuo fino alla conferma dell'atleta.
-- Calcolo automatico in tempo reale del volume totale di lavoro ($Volume = \sum kg \times reps$).
+Il componente `WorkoutModal.tsx` fornisce l'interfaccia interattiva per l'atleta durante la sessione in palestra, gestendo nativamente l'architettura **Block-Based**:
+- **Blocchi Standard & Superset**: esecuzione serie per serie (con piramidali, Warm-up, Stripping/Dropset e Rest-Pause) o sequenza in superserie con timer di fine combinazione.
+- **Blocchi Circuito a Round**: loop reattivo ad anello guidato dall'indicatore `🔄 CIRCUITO - GIRO X DI Y`. Gestione automatica del timer di riposo intra-esercizio (`intra_rest_seconds`) dopo ogni stazione e del recupero a fine giro (`rest_between_rounds`) al termine dell'ultimo esercizio del round, prima di avanzare al giro successivo.
+- **Persistenza Decoupled dei Round**: ogni round del circuito viene convertito internamente in serie loggate immutabili (`set_number: roundNumber`), registrando carichi effettivi, reps ed RPE senza forzare modifiche allo schema di storico.
+- **Sveglia Acustica Continua**: alla scadenza di qualsiasi timer di recupero entra in funzione un loop audio continuo via `expo-audio` (`alarm.wav`) che suona ad alto volume fino al tocco dell'atleta.
+- **Calcolo Dinamico del Volume**: tonnellaggio totale istantaneo calcolato in tempo reale ($Volume = \sum kg \times reps$).
 
 ---
 
@@ -155,6 +158,43 @@ CREATE TABLE IF NOT EXISTS body_measurements (
 
 CREATE INDEX IF NOT EXISTS idx_body_measurements_owner ON body_measurements(owner_id);
 ```
+
+### 4.4 Schema Schede Block-Based e Migrazione Idempotente
+Per superare la limitazione delle schede con lista di esercizi "piatta" e consentire combinazioni avanzate (schede ibride con esercizi standard, superserie e circuiti a round), il database adotta un'architettura **Block-Based**:
+
+```sql
+-- Tabella Blocchi Scheda
+CREATE TABLE IF NOT EXISTS routine_blocks (
+  id SERIAL PRIMARY KEY,
+  routine_id INTEGER NOT NULL REFERENCES workout_routines(id) ON DELETE CASCADE,
+  block_type VARCHAR(32) NOT NULL DEFAULT 'STANDARD', -- 'STANDARD' | 'SUPERSET' | 'CIRCUIT'
+  order_index INTEGER NOT NULL DEFAULT 0,
+  rounds INTEGER NOT NULL DEFAULT 1,
+  rest_between_rounds INTEGER NOT NULL DEFAULT 0,
+  created_at VARCHAR(64) NOT NULL
+);
+
+-- Esercizi associati al Blocco
+CREATE TABLE IF NOT EXISTS routine_exercises (
+  id SERIAL PRIMARY KEY,
+  block_id INTEGER REFERENCES routine_blocks(id) ON DELETE CASCADE,
+  routine_id INTEGER REFERENCES workout_routines(id) ON DELETE CASCADE,
+  exercise_id VARCHAR(64) NOT NULL REFERENCES exercises(id),
+  order_index INTEGER NOT NULL DEFAULT 0,
+  intra_rest_seconds INTEGER NOT NULL DEFAULT 0,
+  sets_config JSONB NOT NULL DEFAULT '[]'::jsonb
+);
+
+CREATE INDEX IF NOT EXISTS idx_routine_blocks_routine ON routine_blocks(routine_id);
+CREATE INDEX IF NOT EXISTS idx_routine_exercises_block ON routine_exercises(block_id);
+```
+
+#### Migrazione Idempotente a Zero Perdita Dati
+All'avvio del server (`backend/src/db/migrate.ts`), un blocco procedurale PL/pgSQL esegue la migrazione idempotente:
+1. Crea la tabella `routine_blocks` e altera `routine_exercises` aggiungendo `block_id` e `intra_rest_seconds`.
+2. Identifica tutti gli esercizi preesistenti aventi `block_id IS NULL`.
+3. Per ciascuna scheda con esercizi orfani, crea automaticamente un blocco sintetico di tipo `'STANDARD'` con `order_index = 0` e associa tutti gli esercizi preesistenti ad esso.
+4. Mantiene la retrocompatibilità con i client precedenti generando dinamicamente la lista piatta `exercises` per le chiamate API che non leggono i blocchi.
 
 ---
 

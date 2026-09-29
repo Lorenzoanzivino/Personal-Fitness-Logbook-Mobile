@@ -6,7 +6,16 @@ import {
   LinkClientResponseDto,
 } from '../types/api';
 import { WorkoutRoutine, RoutineFolder, Workout, Exercise } from '../types/workout';
-import { AuthSession, LoginCredentials, ProvisionedClient } from '../types/auth';
+import {
+  AuthSession,
+  AuthUser,
+  LoginCredentials,
+  ProvisionedClient,
+  CreateClientRequestDto,
+  CreateClientResponseDto,
+  LoginOtpRequestDto,
+  ClientOnboardingDto,
+} from '../types/auth';
 import { BodyMeasurement, CreateBodyMeasurementDto } from '../types/measurement';
 import { gymStorage } from './gymStorage';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -19,6 +28,7 @@ interface ActiveOtpRecord {
 }
 
 const STORAGE_KEY_OTPS = '@fitness_active_otps_v1';
+const STORAGE_KEY_AUTH_TOKEN = '@fitness_auth_token';
 
 class ApiService {
   private inMemoryOtps: Map<string, ActiveOtpRecord> = new Map();
@@ -26,14 +36,35 @@ class ApiService {
 
   constructor() {
     this.loadPersistedOtps();
+    this.loadPersistedToken();
   }
 
-  setAuthToken(token: string | null): void {
+  async setAuthToken(token: string | null): Promise<void> {
     this.authToken = token;
+    try {
+      if (token) {
+        await AsyncStorage.setItem(STORAGE_KEY_AUTH_TOKEN, token);
+      } else {
+        await AsyncStorage.removeItem(STORAGE_KEY_AUTH_TOKEN);
+      }
+    } catch (e) {
+      console.warn('Errore persistenza auth token:', e);
+    }
   }
 
   getAuthToken(): string | null {
     return this.authToken;
+  }
+
+  private async loadPersistedToken(): Promise<void> {
+    try {
+      const token = await AsyncStorage.getItem(STORAGE_KEY_AUTH_TOKEN);
+      if (token) {
+        this.authToken = token;
+      }
+    } catch {
+      // ignore
+    }
   }
 
   private async loadPersistedOtps(): Promise<void> {
@@ -71,6 +102,26 @@ class ApiService {
     const timeoutId = setTimeout(() => controller.abort(), API_CONFIG.timeoutMs);
 
     try {
+      // Garantisce che il Bearer token sia sempre presente attingendo dallo storage se non in memoria
+      if (!this.authToken) {
+        try {
+          const storedToken = await AsyncStorage.getItem(STORAGE_KEY_AUTH_TOKEN);
+          if (storedToken) {
+            this.authToken = storedToken;
+          } else {
+            const sessionStr = await AsyncStorage.getItem('@fitness_auth_session_v2');
+            if (sessionStr) {
+              const session = JSON.parse(sessionStr);
+              if (session?.token) {
+                this.authToken = session.token;
+              }
+            }
+          }
+        } catch {
+          // ignore
+        }
+      }
+
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
         Accept: 'application/json',
@@ -140,6 +191,13 @@ class ApiService {
     });
   }
 
+  async patch<T>(path: string, body?: unknown): Promise<ApiResponse<T>> {
+    return this.request<T>(path, {
+      method: 'PATCH',
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+  }
+
   async delete<T>(path: string): Promise<ApiResponse<T>> {
     return this.request<T>(path, { method: 'DELETE' });
   }
@@ -149,7 +207,36 @@ class ApiService {
   // ==========================================
 
   async login(credentials: LoginCredentials): Promise<ApiResponse<AuthSession>> {
-    return this.post<AuthSession>('/api/v1/auth/login', credentials);
+    const payload = {
+      identifier: credentials.identifier || credentials.username || '',
+      secret: credentials.secret || credentials.passwordOrOtp || '',
+      username: credentials.identifier || credentials.username || '',
+      passwordOrOtp: credentials.secret || credentials.passwordOrOtp || '',
+    };
+    const response = await this.post<AuthSession>('/api/v1/auth/login', payload);
+    if (response.success && response.data?.token) {
+      await this.setAuthToken(response.data.token);
+    }
+    return response;
+  }
+
+  async loginOtp(dto: LoginOtpRequestDto): Promise<ApiResponse<AuthSession>> {
+    return this.login({
+      identifier: dto.firstName,
+      secret: dto.otp,
+    });
+  }
+
+  async createTrainerClient(dto: CreateClientRequestDto): Promise<ApiResponse<CreateClientResponseDto>> {
+    return this.post<CreateClientResponseDto>('/api/v1/trainer/clients', dto);
+  }
+
+  async completeClientOnboarding(dto: ClientOnboardingDto): Promise<ApiResponse<AuthUser>> {
+    return this.put<AuthUser>('/api/v1/clients/onboarding', dto);
+  }
+
+  async deleteTrainerClient(clientId: string): Promise<ApiResponse<{ id: string; deleted: boolean }>> {
+    return this.delete<{ id: string; deleted: boolean }>(`/api/v1/trainer/clients/${clientId}`);
   }
 
   async provisionClient(data: {
@@ -159,11 +246,14 @@ class ApiService {
     trainer_id?: string;
     trainer_name?: string;
   }): Promise<ApiResponse<ProvisionedClient>> {
-    return this.post<ProvisionedClient>('/api/v1/auth/provision', data);
+    return this.post<ProvisionedClient>('/api/v1/trainer/clients', {
+      firstName: data.first_name,
+      lastName: data.last_name,
+    });
   }
 
   async fetchProvisionedClients(): Promise<ApiResponse<ProvisionedClient[]>> {
-    return this.get<ProvisionedClient[]>('/api/v1/auth/provisioned-clients');
+    return this.get<ProvisionedClient[]>('/api/v1/trainer/clients');
   }
 
   async generateTrainerOtp(
@@ -304,6 +394,10 @@ class ApiService {
 
   async createRoutine(routine: Omit<WorkoutRoutine, 'id' | 'created_at' | 'updated_at'>): Promise<ApiResponse<WorkoutRoutine>> {
     return this.post<WorkoutRoutine>('/api/v1/routines', routine);
+  }
+
+  async updateRoutine(id: number, routine: Partial<WorkoutRoutine>): Promise<ApiResponse<WorkoutRoutine>> {
+    return this.put<WorkoutRoutine>(`/api/v1/routines/${id}`, routine);
   }
 
   async deleteRoutine(id: number): Promise<ApiResponse<{ id: number; deleted: boolean }>> {

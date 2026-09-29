@@ -5,6 +5,7 @@ import { colors } from '../theme/colors';
 import { layout } from '../theme/spacing';
 import { getActiveRouteName, navigateSafely } from '../navigation/navigationRef';
 import { useAuth } from '../context/AuthContext';
+import { CustomConfirmModal } from './CustomConfirmModal';
 
 const APP_LOGO = require('../../assets/logo1.png');
 
@@ -172,6 +173,7 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const { logout } = useAuth();
   const [helpVisible, setHelpVisible] = useState(false);
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [currentRoute, setCurrentRoute] = useState<string>(routeProp || 'Home');
 
   const handleOpenHelp = () => {
@@ -184,25 +186,13 @@ export const Header: React.FC<HeaderProps> = ({
     setHelpVisible(true);
   };
 
-  const handleLogout = () => {
-    Alert.alert(
-      'Disconnessione',
-      'Sei sicuro di voler effettuare il logout dall\'applicazione?',
-      [
-        { text: 'Annulla', style: 'cancel' },
-        {
-          text: 'Disconnetti',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await logout();
-            } catch (err) {
-              console.warn('Errore durante il logout:', err);
-            }
-          },
-        },
-      ]
-    );
+  const handleConfirmLogout = async () => {
+    setShowLogoutModal(false);
+    try {
+      await logout();
+    } catch (err) {
+      console.warn('Errore durante il logout:', err);
+    }
   };
 
   const guide = SCREEN_HELP_DATA[currentRoute] || DEFAULT_HELP;
@@ -261,17 +251,30 @@ export const Header: React.FC<HeaderProps> = ({
         </Pressable>
 
         <Pressable
-          onPress={handleLogout}
+          onPress={() => setShowLogoutModal(true)}
           style={({ pressed }) => [
             styles.logoutIconBtn,
             { opacity: pressed ? 0.7 : 1 },
           ]}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           accessibilityRole="button"
           accessibilityLabel="Disconnetti account"
         >
-          <Ionicons name="log-out-outline" size={17} color={colors.danger} />
+          <Ionicons name="log-out-outline" size={18} color={colors.danger} />
         </Pressable>
       </View>
+
+      {/* Logout Confirmation Modal */}
+      <CustomConfirmModal
+        visible={showLogoutModal}
+        title="Disconnessione"
+        message="Sei sicuro di voler effettuare il logout dall'applicazione?"
+        confirmText="Disconnetti"
+        cancelText="Annulla"
+        isDestructive
+        onConfirm={handleConfirmLogout}
+        onCancel={() => setShowLogoutModal(false)}
+      />
 
       {/* Help Modal */}
       <Modal

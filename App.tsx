@@ -27,7 +27,9 @@ const customDarkTheme = {
 function AppContent() {
   const { isAuthenticated, user } = useAuth();
   const isClientOnboardingRequired =
-    isAuthenticated && user?.role === 'CLIENT' && user?.is_profile_completed === false;
+    isAuthenticated &&
+    user?.role === 'CLIENT' &&
+    (user?.is_onboarded === false || user?.is_profile_completed === false);
 
   return (
     <SafeAreaView

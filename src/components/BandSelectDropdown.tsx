@@ -200,8 +200,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   triggerCompact: {
-    height: 40,
-    paddingHorizontal: 8,
+    height: 48,
+    paddingHorizontal: 10,
+    borderRadius: 8,
   },
   disabledTrigger: {
     opacity: 0.5,
@@ -222,7 +223,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   triggerLabelCompact: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
   },
   chevron: {

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -22,13 +22,22 @@ import { UserProfile, UserRole } from '../types/profile';
 import { useAuth } from '../context/AuthContext';
 
 export const ProfileScreen: React.FC = () => {
-  const { user, role: authRole, logout } = useAuth();
+  const { user, role: authRole, logout, updateUserSession } = useAuth();
+
+  const isMounted = useRef(true);
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [profile, setProfile] = useState<UserProfile>(profileService.getCurrentProfile());
 
   // Form State (Personal & Biometric)
+  const [username, setUsername] = useState(user?.username || profile.username || '');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [birthDate, setBirthDate] = useState('');
@@ -61,7 +70,9 @@ export const ProfileScreen: React.FC = () => {
   useEffect(() => {
     loadProfile();
     const unsub = profileService.subscribe((p) => {
-      setProfile(p);
+      if (isMounted.current) {
+        setProfile(p);
+      }
     });
     return () => unsub();
   }, [user?.id]);
@@ -70,18 +81,22 @@ export const ProfileScreen: React.FC = () => {
   useEffect(() => {
     if (!feedback) return;
     const timer = setTimeout(() => {
-      setFeedback(null);
+      if (isMounted.current) {
+        setFeedback(null);
+      }
     }, 2500);
     return () => clearTimeout(timer);
   }, [feedback]);
 
-  const loadProfile = async () => {
-    setLoading(true);
+  const loadProfile = async (silent = false) => {
+    if (!silent) setLoading(true);
     setFeedback(null);
     try {
       const activeUserId = String(user?.id || profile.id || 'trainer-1');
       const userAvatar = await profileService.getUserAvatar(activeUserId);
       const res = await profileService.getProfile();
+      if (!isMounted.current) return;
+
       if (res.success && res.data) {
         const combined: UserProfile = {
           ...res.data,
@@ -89,23 +104,28 @@ export const ProfileScreen: React.FC = () => {
         };
         setProfile(combined);
         populateForm(combined);
-      } else {
+      } else if (!silent && res.error?.message) {
         setFeedback({
           type: 'error',
-          text: res.error?.message || 'Errore nel caricamento del profilo.',
+          text: res.error.message,
         });
       }
     } catch {
-      setFeedback({
-        type: 'error',
-        text: 'Errore di connessione durante il caricamento del profilo.',
-      });
+      if (isMounted.current && !silent) {
+        setFeedback({
+          type: 'error',
+          text: 'Errore di connessione durante il caricamento del profilo.',
+        });
+      }
     } finally {
-      setLoading(false);
+      if (isMounted.current && !silent) {
+        setLoading(false);
+      }
     }
   };
 
   const populateForm = (data: UserProfile) => {
+    setUsername(data.username || user?.username || '');
     setFirstName(data.first_name || user?.first_name || '');
     setLastName(data.last_name || user?.last_name || '');
     setBirthDate(data.birth_date || user?.birth_date || '');
@@ -114,6 +134,20 @@ export const ProfileScreen: React.FC = () => {
   };
 
   const validateForm = (): boolean => {
+    const cleanUsername = username.trim().replace(/^@/, '');
+    if (!cleanUsername) {
+      setFeedback({ type: 'error', text: 'Lo Username è obbligatorio.' });
+      return false;
+    }
+
+    if (!/^[a-zA-Z0-9_.-]+$/.test(cleanUsername)) {
+      setFeedback({
+        type: 'error',
+        text: 'Lo Username può contenere solo lettere, numeri, trattini, underscore e punti.',
+      });
+      return false;
+    }
+
     if (!firstName.trim()) {
       setFeedback({ type: 'error', text: 'Il campo Nome è obbligatorio.' });
       return false;
@@ -164,6 +198,7 @@ export const ProfileScreen: React.FC = () => {
     setSaving(true);
     setFeedback(null);
 
+    const cleanUsername = username.trim().replace(/^@/, '');
     const numHeight = parseFloat(heightCm);
     const activeUserId = String(user?.id || profile?.id || 'trainer-1');
 
@@ -173,7 +208,7 @@ export const ProfileScreen: React.FC = () => {
       }
       const res = await profileService.updateProfile({
         id: activeUserId,
-        username: user?.username || profile?.username,
+        username: cleanUsername,
         first_name: firstName.trim(),
         last_name: lastName.trim(),
         birth_date: birthDate.trim(),
@@ -184,26 +219,44 @@ export const ProfileScreen: React.FC = () => {
         trainer_name: user?.trainer_name || profile?.trainer_name,
       });
 
+      if (!isMounted.current) return;
+
       if (res.success && res.data) {
         setProfile(res.data);
         populateForm(res.data);
-        setFeedback({
-          type: 'success',
-          text: 'Profilo salvato con successo!',
+        await updateUserSession({
+          username: res.data.username,
+          first_name: res.data.first_name,
+          last_name: res.data.last_name,
+          birth_date: res.data.birth_date,
+          height_cm: res.data.height_cm,
+          avatar_url: res.data.avatar_url,
         });
+        if (isMounted.current) {
+          setFeedback({
+            type: 'success',
+            text: 'Profilo salvato con successo!',
+          });
+        }
       } else {
-        setFeedback({
-          type: 'error',
-          text: res.error?.message || 'Impossibile aggiornare il profilo.',
-        });
+        if (isMounted.current) {
+          setFeedback({
+            type: 'error',
+            text: res.error?.message || 'Impossibile aggiornare il profilo.',
+          });
+        }
       }
     } catch {
-      setFeedback({
-        type: 'error',
-        text: 'Errore durante il salvataggio del profilo.',
-      });
+      if (isMounted.current) {
+        setFeedback({
+          type: 'error',
+          text: 'Errore durante il salvataggio del profilo.',
+        });
+      }
     } finally {
-      setSaving(false);
+      if (isMounted.current) {
+        setSaving(false);
+      }
     }
   };
 
@@ -212,11 +265,13 @@ export const ProfileScreen: React.FC = () => {
     setSaving(true);
     setFeedback(null);
     const activeUserId = String(user?.id || profile?.id || 'trainer-1');
+    const cleanUsername = username.trim().replace(/^@/, '');
     try {
       await profileService.setUserAvatar(activeUserId, newUri);
       const numHeight = parseFloat(heightCm) || profile?.height_cm || 175;
       const res = await profileService.updateProfile({
         id: activeUserId,
+        username: cleanUsername || user?.username || profile?.username,
         first_name: firstName.trim() || profile?.first_name || 'Utente',
         last_name: lastName.trim() || profile?.last_name || '',
         birth_date: birthDate.trim() || profile?.birth_date || '01-01-2000',
@@ -224,25 +279,37 @@ export const ProfileScreen: React.FC = () => {
         avatar_url: newUri,
         role: currentRole,
       });
+
+      if (!isMounted.current) return;
+
       if (res.success && res.data) {
         setProfile(res.data);
-        setFeedback({
-          type: 'success',
-          text: 'Nuovo avatar salvato con successo!',
-        });
+        await updateUserSession({ avatar_url: newUri });
+        if (isMounted.current) {
+          setFeedback({
+            type: 'success',
+            text: 'Nuovo avatar salvato con successo!',
+          });
+        }
       } else {
-        setFeedback({
-          type: 'error',
-          text: res.error?.message || 'Impossibile salvare il nuovo avatar.',
-        });
+        if (isMounted.current) {
+          setFeedback({
+            type: 'error',
+            text: res.error?.message || 'Impossibile salvare il nuovo avatar.',
+          });
+        }
       }
     } catch {
-      setFeedback({
-        type: 'error',
-        text: 'Errore durante il salvataggio automatico dell\'avatar.',
-      });
+      if (isMounted.current) {
+        setFeedback({
+          type: 'error',
+          text: 'Errore durante il salvataggio automatico dell\'avatar.',
+        });
+      }
     } finally {
-      setSaving(false);
+      if (isMounted.current) {
+        setSaving(false);
+      }
     }
   };
 
@@ -325,12 +392,12 @@ export const ProfileScreen: React.FC = () => {
             </View>
 
             <Text style={styles.roleExplanation}>
-              Accesso Atleta confermato per @{user?.username || profile.username || 'Cliente'}. Schede di allenamento e dati biometrici sincronizzati.
+              Accesso Atleta confermato per @{(user?.username || profile.username || 'Cliente').replace(/^@/, '')}. Schede di allenamento e dati biometrici sincronizzati.
             </Text>
 
             <View style={styles.accountMetaRow}>
               <Text style={styles.accountMetaText}>
-                Username: <Text style={{ fontWeight: '700', color: colors.text }}>@{user?.username || profile.username || 'Cliente'}</Text>
+                Username: <Text style={{ fontWeight: '700', color: colors.text }}>@{(user?.username || profile.username || 'Cliente').replace(/^@/, '')}</Text>
               </Text>
               <View style={styles.statusPill}>
                 <Text style={styles.statusPillText}>● Sessione Attiva</Text>
@@ -357,12 +424,12 @@ export const ProfileScreen: React.FC = () => {
             </View>
 
             <Text style={styles.roleExplanation}>
-              Accesso Master confermato per @{user?.username || 'trainer'}. Creazione schede autonome e in delega per gli atleti, registrazione clienti e gestione catalogo.
+              Accesso Master confermato per @{(user?.username || 'trainer').replace(/^@/, '')}. Creazione schede autonome e in delega per gli atleti, registrazione clienti e gestione catalogo.
             </Text>
 
             <View style={styles.accountMetaRow}>
               <Text style={styles.accountMetaText}>
-                Account attivo: <Text style={{ fontWeight: '700', color: colors.text }}>@{user?.username || 'trainer'}</Text>
+                Account attivo: <Text style={{ fontWeight: '700', color: colors.text }}>@{(user?.username || 'trainer').replace(/^@/, '')}</Text>
               </Text>
               <View style={styles.statusPill}>
                 <Text style={styles.statusPillText}>● Sessione Autenticata</Text>
@@ -378,6 +445,26 @@ export const ProfileScreen: React.FC = () => {
           <Text style={[typography.h3, { marginBottom: 16 }]}>
             Dati Anagrafici & Biometrici
           </Text>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>USERNAME (@) *</Text>
+            <View style={styles.usernameInputContainer}>
+              <Text style={styles.usernamePrefix}>@</Text>
+              <TextInput
+                style={styles.usernameTextInput}
+                value={username.replace(/^@/, '')}
+                onChangeText={(val) => {
+                  setUsername(val.replace(/^@/, ''));
+                  if (feedback) setFeedback(null);
+                }}
+                placeholder="es. marco_rossi"
+                placeholderTextColor={colors.textMuted}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </View>
+            <Text style={styles.fieldHint}>Identificativo univoco per l'accesso e le schede</Text>
+          </View>
 
           <View style={styles.inputGroup}>
             <Text style={styles.inputLabel}>NOME *</Text>
@@ -493,84 +580,86 @@ export const ProfileScreen: React.FC = () => {
       />
 
       {/* Opacity Overlay Modal for Profile Changes / Feedback */}
-      <Modal
-        visible={Boolean(feedback)}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setFeedback(null)}
-      >
-        <Pressable
-          style={styles.feedbackOverlay}
-          onPress={() => setFeedback(null)}
-          accessibilityRole="button"
-          accessibilityLabel="Chiudi notifica"
+      {Boolean(feedback && feedback.text) && (
+        <Modal
+          visible={Boolean(feedback && feedback.text)}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setFeedback(null)}
         >
           <Pressable
-            style={[
-              styles.feedbackCard,
-              feedback?.type === 'success'
-                ? styles.feedbackCardSuccess
-                : styles.feedbackCardError,
-            ]}
-            onPress={(e) => e.stopPropagation()}
+            style={styles.feedbackOverlay}
+            onPress={() => setFeedback(null)}
+            accessibilityRole="button"
+            accessibilityLabel="Chiudi notifica"
           >
-            {/* Status Icon */}
-            <View
-              style={[
-                styles.feedbackIconCircle,
-                feedback?.type === 'success'
-                  ? styles.feedbackIconCircleSuccess
-                  : styles.feedbackIconCircleError,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.feedbackIconText,
-                  {
-                    color:
-                      feedback?.type === 'success'
-                        ? colors.emerald
-                        : colors.danger,
-                  },
-                ]}
-              >
-                {feedback?.type === 'success' ? '✓' : '⚠'}
-              </Text>
-            </View>
-
-            {/* Content Text */}
-            <View style={styles.feedbackContent}>
-              <Text
-                style={[
-                  styles.feedbackTag,
-                  {
-                    color:
-                      feedback?.type === 'success'
-                        ? colors.emerald
-                        : colors.danger,
-                  },
-                ]}
-              >
-                {feedback?.type === 'success' ? 'MODIFICA COMPLETATA' : 'ATTENZIONE'}
-              </Text>
-              <Text style={styles.feedbackMessage}>{feedback?.text}</Text>
-              <Text style={styles.feedbackAutoDismissHint}>
-                Tocca per chiudere
-              </Text>
-            </View>
-
-            {/* Dismiss Button */}
             <Pressable
-              onPress={() => setFeedback(null)}
-              style={styles.feedbackCloseBtn}
-              accessibilityRole="button"
-              accessibilityLabel="Chiudi banner notifica"
+              style={[
+                styles.feedbackCard,
+                feedback?.type === 'success'
+                  ? styles.feedbackCardSuccess
+                  : styles.feedbackCardError,
+              ]}
+              onPress={(e) => e.stopPropagation()}
             >
-              <Text style={styles.feedbackCloseBtnText}>✕</Text>
+              {/* Status Icon */}
+              <View
+                style={[
+                  styles.feedbackIconCircle,
+                  feedback?.type === 'success'
+                    ? styles.feedbackIconCircleSuccess
+                    : styles.feedbackIconCircleError,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.feedbackIconText,
+                    {
+                      color:
+                        feedback?.type === 'success'
+                          ? colors.emerald
+                          : colors.danger,
+                    },
+                  ]}
+                >
+                  {feedback?.type === 'success' ? '✓' : '⚠'}
+                </Text>
+              </View>
+
+              {/* Content Text */}
+              <View style={styles.feedbackContent}>
+                <Text
+                  style={[
+                    styles.feedbackTag,
+                    {
+                      color:
+                        feedback?.type === 'success'
+                          ? colors.emerald
+                          : colors.danger,
+                    },
+                  ]}
+                >
+                  {feedback?.type === 'success' ? 'MODIFICA COMPLETATA' : 'ATTENZIONE'}
+                </Text>
+                <Text style={styles.feedbackMessage}>{feedback?.text}</Text>
+                <Text style={styles.feedbackAutoDismissHint}>
+                  Tocca per chiudere
+                </Text>
+              </View>
+
+              {/* Dismiss Button */}
+              <Pressable
+                onPress={() => setFeedback(null)}
+                style={styles.feedbackCloseBtn}
+                accessibilityRole="button"
+                accessibilityLabel="Chiudi banner notifica"
+              >
+                <Text style={styles.feedbackCloseBtnText}>✕</Text>
+              </Pressable>
             </Pressable>
           </Pressable>
-        </Pressable>
-      </Modal>
+        </Modal>
+      )}
     </ScreenBackgroundWrapper>
   );
 };
@@ -808,6 +897,29 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: 8,
     paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 15,
+    color: colors.text,
+    minHeight: layout.minTouchTarget,
+  },
+  usernameInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.backgroundElevated,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    minHeight: layout.minTouchTarget,
+  },
+  usernamePrefix: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: colors.accent,
+    marginRight: 4,
+  },
+  usernameTextInput: {
+    flex: 1,
     paddingVertical: 10,
     fontSize: 15,
     color: colors.text,
