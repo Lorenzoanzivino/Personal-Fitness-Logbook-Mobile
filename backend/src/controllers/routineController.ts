@@ -11,11 +11,31 @@ function validateRoutineDto(body: any, isUpdate = false) {
       throw { statusCode: 400, code: 'INVALID_NAME', message: 'Il nome della scheda è obbligatorio.' };
     }
   }
+  if (body.client_ids !== undefined && !Array.isArray(body.client_ids)) {
+    throw { statusCode: 400, code: 'INVALID_CLIENT_IDS', message: 'client_ids deve essere un array.' };
+  }
+  if (body.clientIds !== undefined && !Array.isArray(body.clientIds)) {
+    throw { statusCode: 400, code: 'INVALID_CLIENT_IDS', message: 'clientIds deve essere un array.' };
+  }
+  if (body.folder_id !== undefined && body.folder_id !== null && typeof body.folder_id !== 'string' && typeof body.folder_id !== 'number') {
+    throw { statusCode: 400, code: 'INVALID_FOLDER_ID', message: 'folder_id deve essere una stringa o null.' };
+  }
+  if (body.folderId !== undefined && body.folderId !== null && typeof body.folderId !== 'string' && typeof body.folderId !== 'number') {
+    throw { statusCode: 400, code: 'INVALID_FOLDER_ID', message: 'folderId deve essere una stringa o null.' };
+  }
   if (body.blocks !== undefined) {
     if (!Array.isArray(body.blocks)) {
       throw { statusCode: 400, code: 'INVALID_BLOCKS', message: 'I blocchi devono essere forniti come array.' };
     }
-    const validBlockTypes = ['STANDARD', 'SUPERSET', 'CIRCUIT'];
+    const validBlockTypes = [
+      'SINGLE',
+      'SUPERSERIE',
+      'CIRCUIT_STANDARD',
+      'CIRCUIT_INTERVAL',
+      'STANDARD',
+      'SUPERSET',
+      'CIRCUIT',
+    ];
     for (let i = 0; i < body.blocks.length; i++) {
       const blk = body.blocks[i];
       if (!blk || typeof blk !== 'object') {
@@ -25,7 +45,7 @@ function validateRoutineDto(body: any, isUpdate = false) {
         throw {
           statusCode: 400,
           code: 'INVALID_BLOCK_TYPE',
-          message: `Tipo di blocco non valido alla posizione ${i + 1}: ${blk.block_type}. Validi: STANDARD, SUPERSET, CIRCUIT.`,
+          message: `Tipo di blocco non valido alla posizione ${i + 1}: ${blk.block_type}. Validi: SINGLE, SUPERSERIE, CIRCUIT_STANDARD, CIRCUIT_INTERVAL.`,
         };
       }
       if (blk.rounds !== undefined && (typeof blk.rounds !== 'number' || blk.rounds < 1)) {

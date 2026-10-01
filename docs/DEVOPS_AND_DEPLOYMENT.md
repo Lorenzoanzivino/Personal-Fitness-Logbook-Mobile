@@ -216,18 +216,19 @@ Questa procedura consente di testare la sincronizzazione client-server in tempo 
    ```
 
 ### 3.2 Configurazione Client `.env.development`
-Nella root del progetto, crea il file `.env` locale:
+Nella cartella `frontend/`, verifica il file `.env.development`:
 ```env
 EXPO_PUBLIC_API_URL=http://192.168.1.150:8000
 EXPO_PUBLIC_ENV=development
 EXPO_PUBLIC_TRAINER_USERNAME=Lorenzo
-EXPO_PUBLIC_TRAINER_PASSWORD=admin123
+EXPO_PUBLIC_TRAINER_PASSWORD=Admin123
 ```
 
 ### 3.3 Test Sincronizzazione e Pull-to-Refresh
 1. Avvia Expo:
    ```bash
-   npx expo start -c
+   cd frontend
+   npm start
    ```
 2. Scansiona il QR Code con **Expo Go** sullo smartphone.
 3. Effettua il login come Trainer (`Lorenzo` / `admin123`).

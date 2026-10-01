@@ -1,13 +1,11 @@
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import * as schema from './schema';
-import * as dotenv from 'dotenv';
-
-dotenv.config();
+import '../config/env';
 
 const connectionString =
   process.env.DATABASE_URL ||
-  'postgres://fitness_user:fitness_secure_password_here@localhost:5432/fitness_db';
+  'postgres://fitness_user:fitness_secure_password_here@localhost:5435/fitness_db';
 
 // Connessione ultra-leggera con pool limitato a max 10 per footprint ridotto (<150MB RAM)
 export const client = postgres(connectionString, {

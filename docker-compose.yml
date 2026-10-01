@@ -28,6 +28,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    ports:
+      - "127.0.0.1:5435:5432"
     networks:
       - backend-net
 

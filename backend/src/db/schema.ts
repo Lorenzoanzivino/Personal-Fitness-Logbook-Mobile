@@ -11,6 +11,7 @@ import {
   boolean,
   smallint,
   jsonb,
+  real,
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import type { SetDropStep } from '../types/workout';
@@ -104,10 +105,13 @@ export const routineBlocks = pgTable('routine_blocks', {
   routineId: integer('routine_id')
     .notNull()
     .references(() => workoutRoutines.id, { onDelete: 'cascade' }),
-  blockType: varchar('block_type', { length: 20 }).default('STANDARD').notNull(), // 'STANDARD' | 'SUPERSET' | 'CIRCUIT'
+  blockType: varchar('block_type', { length: 50 }).default('SINGLE').notNull(), // 'SINGLE' | 'SUPERSERIE' | 'CIRCUIT_STANDARD' | 'CIRCUIT_INTERVAL'
   orderIndex: integer('order_index').default(1).notNull(),
   rounds: integer('rounds').default(1).notNull(),
   restBetweenRounds: integer('rest_between_rounds').default(0),
+  circuitType: varchar('circuit_type', { length: 20 }).default('STANDARD'), // 'STANDARD' | 'INTERVAL'
+  intervalWorkSeconds: integer('interval_work_seconds'),
+  intervalRestSeconds: integer('interval_rest_seconds'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
@@ -136,14 +140,16 @@ export const routineExerciseSets = pgTable('routine_exercise_sets', {
     .notNull()
     .references(() => routineExercises.id, { onDelete: 'cascade' }),
   setNumber: integer('set_number').notNull(),
-  setType: varchar('set_type', { length: 30 }).default('normal').notNull(),
+  setType: varchar('set_type', { length: 30 }).default('NORMAL').notNull(), // 'WARMUP' | 'NORMAL' | 'STRIPPING' | 'REST_PAUSE'
   targetWeightKg: numeric('target_weight_kg', { precision: 6, scale: 2 }).default('0').notNull(),
   targetReps: integer('target_reps').default(0).notNull(),
   targetTimeSeconds: integer('target_time_seconds'),
   bandAssistance: varchar('band_assistance', { length: 30 }).default('none'),
   dropsetWeightKg: numeric('dropset_weight_kg', { precision: 6, scale: 2 }),
   drops: jsonb('drops').$type<SetDropStep[]>().default([]),
-  dropPercentage: numeric('drop_percentage', { precision: 5, scale: 2 }),
+  dropCount: integer('drop_count').default(0).notNull(),
+  dropPercentage: real('drop_percentage'),
+  restPauseSeconds: integer('rest_pause_seconds'),
   restSeconds: integer('rest_seconds').default(90).notNull(),
   notes: text('notes'),
 });
@@ -214,18 +220,21 @@ export const bodyMeasurements = pgTable('body_measurements', {
   ownerId: varchar('owner_id', { length: 64 })
     .notNull()
     .references(() => users.id, { onDelete: 'cascade' }),
-  recordedAt: timestamp('recorded_at', { withTimezone: true }).notNull(),
-  weightKg: numeric('weight_kg', { precision: 5, scale: 2 }).notNull(),
+  date: timestamp('date', { withTimezone: true }).defaultNow().notNull(),
+  weight: numeric('weight', { precision: 5, scale: 2 }).notNull(),
   weightDeltaKg: numeric('weight_delta_kg', { precision: 5, scale: 2 }),
   bmi: numeric('bmi', { precision: 4, scale: 1 }),
-  bodyFatPct: numeric('body_fat_pct', { precision: 4, scale: 1 }),
+  bodyFatPercentage: numeric('body_fat_percentage', { precision: 4, scale: 1 }),
   muscleMassKg: numeric('muscle_mass_kg', { precision: 5, scale: 2 }),
+  bmr: numeric('bmr', { precision: 6, scale: 1 }),
+  waterPercentage: numeric('water_percentage', { precision: 4, scale: 1 }),
+  fatMassKg: numeric('fat_mass_kg', { precision: 5, scale: 2 }),
   leanMassKg: numeric('lean_mass_kg', { precision: 5, scale: 2 }),
-  waterPct: numeric('water_pct', { precision: 4, scale: 1 }),
   boneMassKg: numeric('bone_mass_kg', { precision: 4, scale: 2 }),
   visceralFat: numeric('visceral_fat', { precision: 4, scale: 1 }),
-  bmrKcal: integer('bmr_kcal'),
-  amrKcal: integer('amr_kcal'),
+  proteinPercentage: numeric('protein_percentage', { precision: 4, scale: 1 }),
+  skeletalMuscleMassKg: numeric('skeletal_muscle_mass_kg', { precision: 5, scale: 2 }),
+  subcutaneousFatPercentage: numeric('subcutaneous_fat_percentage', { precision: 4, scale: 1 }),
   notes: text('notes'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),

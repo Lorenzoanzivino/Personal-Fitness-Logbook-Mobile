@@ -12,13 +12,18 @@ yarn.lock.bak
 # ==========================================
 .env
 .env.*
-!.env.example
-!.env.production.example
-!backend/.env.example
 *.env
 *.env.*
 *.bak
 *.backup
+
+# Whitelist environment template files
+!.env.example
+!.env.*.example
+!frontend/.env.example
+!frontend/.env.*.example
+!backend/.env.example
+!backend/.env.*.example
 
 # ==========================================
 # BUILD OUTPUTS & NATIVE GENERATED FOLDERS

@@ -41,35 +41,41 @@ Tutta la documentazione approfondita è centralizzata nella cartella [`docs/`](f
 
 ```
 Personal-Fitness-Logbook-Mobile/
-├── assets/                  # Icone, splash screen, audio allarme (alarm.wav) e sfondi
-├── backend/                 # Backend monolitico leggero (Node.js + Fastify + Drizzle)
+├── backend/                 # Backend API Monolitico (Fastify + Drizzle ORM)
 │   ├── src/
 │   │   ├── controllers/     # Controller REST (HTTP parsing, validazione DTO)
 │   │   ├── services/        # Service Layer (Business logic, isolamento owner_id, Drizzle)
 │   │   ├── middleware/      # JWT verify hook (authenticate) e RBAC (requireTrainer)
 │   │   ├── routes/          # Dichiarazione endpoint /api/v1
 │   │   ├── db/              # Schema Drizzle, migrazioni e seed
+│   │   ├── config/          # Caricamento e isolamento ambienti (.env)
 │   │   └── types/           # Contratti TypeScript condivisi
+│   ├── scripts/             # Script di manutenzione (seed-local, wipe-production)
 │   ├── Dockerfile           # Immagine Docker ottimizzata multistage
+│   └── package.json
+├── frontend/                # Client Mobile (React Native + Expo SDK 57)
+│   ├── src/
+│   │   ├── components/      # Componenti UI (Card, Avatar, Toast, Timer, Grafici)
+│   │   ├── context/         # State Machines: AuthContext, GymContext, MeasurementContext, DietContext
+│   │   ├── navigation/      # React Navigation v7: Auth Stack, RootStack, BottomTabNavigator
+│   │   ├── screens/         # Schermate principali (Home, Gym, Clients, Measurements, Diet, Profile, Settings)
+│   │   │   ├── auth/        # Login e Onboarding primo accesso
+│   │   │   └── modals/      # Live Workout Logger, Routine Builder, Pesate
+│   │   ├── services/        # Client API REST e AsyncStorage partizionato
+│   │   ├── theme/           # Design token Gym Dark ad alto contrasto
+│   │   └── types/           # Tipi TypeScript
+│   ├── assets/              # Icone, loghi, splash e audio
+│   ├── App.tsx              # Bootstrap e gerarchia provider client mobile
+│   ├── app.json             # Configurazione Expo
+│   ├── eas.json             # Profili di build EAS (APK Standalone)
 │   └── package.json
 ├── docs/                    # Documentazione tecnica consolidata
 │   ├── PROJECT_OVERVIEW.md  # Master alignment per Gemini/AI & Devs
 │   ├── SYSTEM_ARCHITECTURE.md
 │   └── DEVOPS_AND_DEPLOYMENT.md
-├── src/                     # Client Mobile (React Native + Expo)
-│   ├── components/          # Componenti UI (Card, Avatar, Toast, Timer, Grafici)
-│   ├── context/             # State Machines: AuthContext, GymContext, MeasurementContext, DietContext
-│   ├── navigation/          # React Navigation v7: Auth Stack, RootStack, BottomTabNavigator
-│   ├── screens/             # Schermate principali (Home, Gym, Clients, Measurements, Diet, Profile, Settings)
-│   │   ├── auth/            # Login e Onboarding primo accesso
-│   │   └── modals/          # Live Workout Logger, Routine Builder, Pesate
-│   ├── services/            # Client API REST e AsyncStorage partizionato
-│   ├── theme/               # Design token Gym Dark ad alto contrasto
-│   └── types/               # Tipi TypeScript
 ├── docker-compose.yml       # Stack di produzione: db (PostgreSQL) + api (Fastify) + proxy (Nginx)
 ├── nginx/                   # Reverse proxy Nginx e configurazione TLS
-├── postgres.conf            # Tuning low-memory PostgreSQL (< 180MB RAM)
-└── App.tsx                  # Bootstrap e gerarchia provider client mobile
+└── postgres.conf            # Tuning low-memory PostgreSQL (< 180MB RAM)
 ```
 
 ---
@@ -83,21 +89,22 @@ Personal-Fitness-Logbook-Mobile/
 
 ### 2. Avvio Backend Locale
 ```bash
-# Avvia solo il database PostgreSQL
+# Avvia solo il database PostgreSQL locale (porta 5435)
 docker compose up -d db
 
 # Avvia il server Fastify in modalità watch
 cd backend
 npm install
-npm run dev
-# Server attivo su: http://localhost:8000 (Healthcheck: http://localhost:8000/health)
+npm run db:seed:local   # Migrazioni Drizzle + Seed Trainer (Lorenzo / Admin123)
+npm run dev             # Server attivo su: http://localhost:8000
 ```
 
 ### 3. Avvio Client Mobile
 ```bash
-# Nella root del progetto
-npm install
-npx expo start -c
+cd frontend
+npm start
+# Oppure: npx expo start -c
+```
 ```
 Inquadra il QR Code con l'app Expo Go per eseguire l'applicazione sul tuo dispositivo.
 

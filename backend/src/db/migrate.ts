@@ -2,6 +2,7 @@ import { client, db } from './index';
 import { users, exercises } from './schema';
 import { sql } from 'drizzle-orm';
 import { DEFAULT_EXERCISES } from './defaultExercises';
+import { hashPassword } from '../utils/crypto';
 
 export async function runMigrationsAndSeed() {
   console.log('🔄 [MIGRATE] Verifica e applicazione schema PostgreSQL Decoupled...');
@@ -100,8 +101,17 @@ export async function runMigrationsAndSeed() {
       order_index INT NOT NULL DEFAULT 1,
       rounds INT NOT NULL DEFAULT 1,
       rest_between_rounds INT DEFAULT 0,
+      circuit_type VARCHAR(20) DEFAULT 'STANDARD',
+      interval_work_seconds INT,
+      interval_rest_seconds INT,
       created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
     );
+
+    ALTER TABLE routine_blocks ADD COLUMN IF NOT EXISTS circuit_type VARCHAR(20) DEFAULT 'STANDARD';
+    ALTER TABLE routine_blocks ADD COLUMN IF NOT EXISTS interval_work_seconds INT;
+    ALTER TABLE routine_blocks ADD COLUMN IF NOT EXISTS interval_rest_seconds INT;
+    ALTER TABLE routine_blocks ALTER COLUMN block_type TYPE VARCHAR(50);
+    ALTER TABLE routine_blocks ALTER COLUMN block_type SET DEFAULT 'SINGLE';
 
     CREATE TABLE IF NOT EXISTS routine_exercises (
       id SERIAL PRIMARY KEY,
@@ -154,7 +164,10 @@ export async function runMigrationsAndSeed() {
       notes TEXT
     );
 
+    ALTER TABLE routine_exercise_sets ALTER COLUMN set_type SET DEFAULT 'NORMAL';
+    ALTER TABLE routine_exercise_sets ADD COLUMN IF NOT EXISTS drop_count INT DEFAULT 0 NOT NULL;
     ALTER TABLE routine_exercise_sets ADD COLUMN IF NOT EXISTS drop_percentage NUMERIC(5, 2);
+    ALTER TABLE routine_exercise_sets ADD COLUMN IF NOT EXISTS rest_pause_seconds INT;
 
     -- =========================================================
     -- LOG STORICI DI ALLENAMENTO (DECOUPLED - IMMUTABILI)
@@ -207,22 +220,47 @@ export async function runMigrationsAndSeed() {
     CREATE TABLE IF NOT EXISTS body_measurements (
       id BIGSERIAL PRIMARY KEY,
       owner_id VARCHAR(64) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      recorded_at TIMESTAMP WITH TIME ZONE NOT NULL,
-      weight_kg NUMERIC(5, 2) NOT NULL,
+      date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+      weight NUMERIC(5, 2) NOT NULL,
       weight_delta_kg NUMERIC(5, 2),
       bmi NUMERIC(4, 1),
-      body_fat_pct NUMERIC(4, 1),
+      body_fat_percentage NUMERIC(4, 1),
       muscle_mass_kg NUMERIC(5, 2),
+      bmr NUMERIC(6, 1),
+      water_percentage NUMERIC(4, 1),
+      fat_mass_kg NUMERIC(5, 2),
       lean_mass_kg NUMERIC(5, 2),
-      water_pct NUMERIC(4, 1),
       bone_mass_kg NUMERIC(4, 2),
       visceral_fat NUMERIC(4, 1),
-      bmr_kcal INT,
-      amr_kcal INT,
+      protein_percentage NUMERIC(4, 1),
+      skeletal_muscle_mass_kg NUMERIC(5, 2),
+      subcutaneous_fat_percentage NUMERIC(4, 1),
       notes TEXT,
       created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
       updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
     );
+
+    ALTER TABLE body_measurements ADD COLUMN IF NOT EXISTS date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP;
+    ALTER TABLE body_measurements ADD COLUMN IF NOT EXISTS weight NUMERIC(5, 2);
+    DO $$ BEGIN
+      IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='body_measurements' AND column_name='weight_kg') THEN
+        UPDATE body_measurements SET weight = weight_kg WHERE weight IS NULL AND weight_kg IS NOT NULL;
+      END IF;
+      IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='body_measurements' AND column_name='recorded_at') THEN
+        UPDATE body_measurements SET date = recorded_at WHERE date IS NULL AND recorded_at IS NOT NULL;
+      END IF;
+    END $$;
+    UPDATE body_measurements SET weight = 70.0 WHERE weight IS NULL;
+    ALTER TABLE body_measurements ALTER COLUMN weight SET NOT NULL;
+    ALTER TABLE body_measurements ALTER COLUMN date SET NOT NULL;
+
+    ALTER TABLE body_measurements ADD COLUMN IF NOT EXISTS body_fat_percentage NUMERIC(4, 1);
+    ALTER TABLE body_measurements ADD COLUMN IF NOT EXISTS bmr NUMERIC(6, 1);
+    ALTER TABLE body_measurements ADD COLUMN IF NOT EXISTS water_percentage NUMERIC(4, 1);
+    ALTER TABLE body_measurements ADD COLUMN IF NOT EXISTS fat_mass_kg NUMERIC(5, 2);
+    ALTER TABLE body_measurements ADD COLUMN IF NOT EXISTS protein_percentage NUMERIC(4, 1);
+    ALTER TABLE body_measurements ADD COLUMN IF NOT EXISTS skeletal_muscle_mass_kg NUMERIC(5, 2);
+    ALTER TABLE body_measurements ADD COLUMN IF NOT EXISTS subcutaneous_fat_percentage NUMERIC(4, 1);
 
     CREATE TABLE IF NOT EXISTS diet_pdfs (
       id SERIAL PRIMARY KEY,
@@ -256,19 +294,31 @@ export async function runMigrationsAndSeed() {
     await db.insert(users).values({
       id: 'trainer-1',
       username: defaultTrainerUsername,
-      passwordHash: process.env.TRAINER_PASSWORD || 'admin123', // In prod viene usato hash bcrypt o comparazione
+      passwordHash: hashPassword(process.env.TRAINER_PASSWORD || 'Admin123'),
       role: 'TRAINER',
       firstName: 'Lorenzo',
       lastName: 'Anzivino',
-      birthDate: '01-01-1995',
-      heightCm: '180',
+      birthDate: '1997-09-09',
+      heightCm: '179',
       email: 'lorenzo.anzivino@example.com',
       isOnboarded: true,
       isProfileCompleted: true,
     });
     console.log('✅ [SEED] Trainer predefinito inserito.');
   } else {
-    await client.unsafe("UPDATE users SET is_onboarded = TRUE WHERE role = 'TRAINER';");
+    await db
+      .update(users)
+      .set({
+        passwordHash: hashPassword(process.env.TRAINER_PASSWORD || 'Admin123'),
+        firstName: 'Lorenzo',
+        lastName: 'Anzivino',
+        birthDate: '1997-09-09',
+        heightCm: '179',
+        isOnboarded: true,
+        isProfileCompleted: true,
+      })
+      .where(sql`LOWER(${users.username}) = LOWER(${defaultTrainerUsername})`);
+    console.log('✅ [SEED] Dati e credenziali Trainer aggiornati.');
   }
 
   // Auto-seed Esercizi di default se tabella vuota

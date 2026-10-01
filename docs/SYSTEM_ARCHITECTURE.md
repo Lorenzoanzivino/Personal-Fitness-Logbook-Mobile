@@ -37,7 +37,7 @@
 
 ### 1.1 Stack Tecnologico & Bootstrap
 L'applicazione mobile è sviluppata con **React Native** su framework **Expo SDK 57** e tipizzata in **TypeScript** strict mode.
-Il punto di ingresso (`App.tsx`) incapsula l'applicazione nella gerarchia ordinata di provider:
+Il punto di ingresso (`frontend/App.tsx`) incapsula l'applicazione nella gerarchia ordinata di provider:
 
 ```
 [SafeAreaProvider]

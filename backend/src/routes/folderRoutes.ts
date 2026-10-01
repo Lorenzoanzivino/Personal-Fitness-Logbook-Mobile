@@ -1,7 +1,7 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { db } from '../db';
 import { routineFolders, users } from '../db/schema';
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, inArray } from 'drizzle-orm';
 import { RoutineFolder } from '../types/workout';
 
 export async function folderRoutes(fastify: FastifyInstance) {
@@ -99,9 +99,21 @@ export async function folderRoutes(fastify: FastifyInstance) {
     async (request: FastifyRequest, reply: FastifyReply) => {
       const { id } = request.params as { id: string };
 
+      let condition: any = and(eq(routineFolders.id, id), eq(routineFolders.ownerId, request.user.id));
+      if (request.user.role === 'TRAINER') {
+        const clientIds = (
+          await db
+            .select({ id: users.id })
+            .from(users)
+            .where(eq(users.trainerId, request.user.id))
+        ).map((c) => c.id);
+        const allowedOwners = [request.user.id, ...clientIds];
+        condition = and(eq(routineFolders.id, id), inArray(routineFolders.ownerId, allowedOwners));
+      }
+
       const deleted = await db
         .delete(routineFolders)
-        .where(and(eq(routineFolders.id, id), eq(routineFolders.ownerId, request.user.id)))
+        .where(condition)
         .returning();
 
       if (deleted.length === 0) {

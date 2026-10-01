@@ -50,3 +50,4 @@ export interface CreateBodyMeasurementDto {
   amr_kcal?: number | null;
   notes?: string | null;
 }
+

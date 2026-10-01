@@ -4,6 +4,7 @@ import {
   routineBlocks,
   routineExercises,
   routineExerciseSets,
+  routineFolders,
   exercises,
   users,
 } from '../db/schema';
@@ -12,6 +13,7 @@ import {
   WorkoutRoutine,
   RoutineBlock,
   RoutineBlockType,
+  CircuitType,
   RoutineExercise,
   RoutineExerciseSet,
 } from '../types/workout';
@@ -110,7 +112,9 @@ export class RoutineService {
               band_assistance: (s.bandAssistance as any) || 'none',
               dropset_weight_kg: s.dropsetWeightKg ? Number(s.dropsetWeightKg) : undefined,
               drops: s.drops || [],
-              drop_percentage: s.dropPercentage ? Number(s.dropPercentage) : undefined,
+              drop_count: s.dropCount != null ? Number(s.dropCount) : (s.drops ? s.drops.length : 0),
+              drop_percentage: s.dropPercentage != null ? Number(s.dropPercentage) : undefined,
+              rest_pause_seconds: s.restPauseSeconds ?? undefined,
               rest_seconds: s.restSeconds,
               notes: s.notes || undefined,
             }));
@@ -141,6 +145,9 @@ export class RoutineService {
             order_index: blk.orderIndex,
             rounds: blk.rounds,
             rest_between_rounds: blk.restBetweenRounds ?? 0,
+            circuit_type: (blk.circuitType as any) || 'STANDARD',
+            interval_work_seconds: blk.intervalWorkSeconds ?? null,
+            interval_rest_seconds: blk.intervalRestSeconds ?? null,
             created_at: blk.createdAt.toISOString(),
             exercises: blockExercises,
           });
@@ -189,6 +196,9 @@ export class RoutineService {
             band_assistance: (s.bandAssistance as any) || 'none',
             dropset_weight_kg: s.dropsetWeightKg ? Number(s.dropsetWeightKg) : undefined,
             drops: s.drops || [],
+            drop_count: s.dropCount != null ? Number(s.dropCount) : (s.drops ? s.drops.length : 0),
+            drop_percentage: s.dropPercentage != null ? Number(s.dropPercentage) : undefined,
+            rest_pause_seconds: s.restPauseSeconds ?? undefined,
             rest_seconds: s.restSeconds,
             notes: s.notes || undefined,
           }));
@@ -245,7 +255,10 @@ export class RoutineService {
 
   async createRoutine(
     authUser: AuthenticatedUser,
-    body: Omit<WorkoutRoutine, 'id' | 'created_at' | 'updated_at'>
+    body: Omit<WorkoutRoutine, 'id' | 'created_at' | 'updated_at'> & {
+      client_ids?: (string | number)[];
+      clientIds?: (string | number)[];
+    }
   ): Promise<WorkoutRoutine> {
     if (authUser.role !== 'TRAINER') {
       throw {
@@ -263,70 +276,145 @@ export class RoutineService {
       };
     }
 
-    let targetOwnerId = authUser.id;
-    if (body.owner_id && body.owner_id !== authUser.id) {
-      // Verifica che il target sia un'allieva di questo trainer
-      const clientRows = await db
-        .select()
-        .from(users)
-        .where(and(eq(users.id, body.owner_id), eq(users.trainerId, authUser.id)));
+    const rawClientIds =
+      (body as any).clientIds ||
+      body.client_ids ||
+      body.clientIds ||
+      (body as any).clientId ||
+      (body as any).client_id;
 
-      if (clientRows.length === 0) {
-        throw {
-          statusCode: 403,
-          code: 'FORBIDDEN_CLIENT_ACCESS',
-          message: 'Non puoi assegnare schede ad atlete non collegate al tuo account.',
-        };
+    let targetOwnerIds: string[] = [];
+
+    if (Array.isArray(rawClientIds) && rawClientIds.length > 0) {
+      const cleaned = rawClientIds
+        .map((id) => String(id).trim())
+        .filter((id) => id.length > 0);
+
+      // Se ci sono clienti specificati, l'owner_id DEVE essere il cliente e NON il trainer loggato
+      const nonTrainerIds = cleaned.filter((id) => id !== authUser.id);
+      if (nonTrainerIds.length > 0) {
+        targetOwnerIds = Array.from(new Set(nonTrainerIds));
+      } else {
+        targetOwnerIds = Array.from(new Set(cleaned));
       }
-      targetOwnerId = body.owner_id;
+    } else if (body.owner_id && String(body.owner_id).trim() && String(body.owner_id).trim() !== authUser.id) {
+      targetOwnerIds = [String(body.owner_id).trim()];
+    } else if ((body as any).ownerId && String((body as any).ownerId).trim() && String((body as any).ownerId).trim() !== authUser.id) {
+      targetOwnerIds = [String((body as any).ownerId).trim()];
+    } else {
+      targetOwnerIds = [authUser.id];
     }
 
-    // TRANSAZIONE DRIZZLE PER INSERIMENTO A CASCATA (Routine -> Blocks -> Exercises -> Sets)
-    return await db.transaction(async (tx) => {
-      const insertedRoutines = await tx
-        .insert(workoutRoutines)
-        .values({
-          folderId: body.folder_id || null,
-          folderName: body.folder_name || null,
-          borderColor: body.border_color || '#3B82F6',
-          name: body.name.trim(),
-          description: body.description || null,
-          workoutType: body.workout_type || null,
-          durationWeeks: body.duration_weeks || 4,
-          currentWeek: (body as any).current_week || 1,
-          ownerId: targetOwnerId,
-        })
-        .returning();
+    for (const targetOwnerId of targetOwnerIds) {
+      if (targetOwnerId !== authUser.id) {
+        const clientRows = await db
+          .select()
+          .from(users)
+          .where(and(eq(users.id, targetOwnerId), eq(users.trainerId, authUser.id)));
 
-      const createdRoutine = insertedRoutines[0];
-      const createdBlocks: RoutineBlock[] = [];
-      const flatExercises: RoutineExercise[] = [];
-
-      // Normalizzazione: se arrivano blocks usa quelli; se arriva solo la lista piatta exercises, crea un blocco STANDARD
-      let blocksInput = body.blocks;
-      if ((!blocksInput || blocksInput.length === 0) && body.exercises && body.exercises.length > 0) {
-        blocksInput = [
-          {
-            block_type: 'STANDARD',
-            order_index: 1,
-            rounds: 1,
-            rest_between_rounds: 0,
-            exercises: body.exercises,
-          },
-        ];
+        if (clientRows.length === 0) {
+          throw {
+            statusCode: 403,
+            code: 'FORBIDDEN_CLIENT_ACCESS',
+            message: `Non puoi assegnare schede ad atlete non collegate al tuo account (ID: ${targetOwnerId}).`,
+          };
+        }
       }
+    }
 
-      if (blocksInput && blocksInput.length > 0) {
-        for (let bIdx = 0; bIdx < blocksInput.length; bIdx++) {
-          const blk = blocksInput[bIdx];
-          const insertedBlocks = await tx
-            .insert(routineBlocks)
-            .values({
-              routineId: createdRoutine.id,
-              blockType: blk.block_type || 'STANDARD',
+    const effectiveFolderId =
+      (body as any).folderId !== undefined
+        ? ((body as any).folderId ? String((body as any).folderId).trim() : null)
+        : (body.folder_id !== undefined
+        ? (body.folder_id ? String(body.folder_id).trim() : null)
+        : null);
+
+    let effectiveFolderName =
+      (body as any).folderName !== undefined
+        ? ((body as any).folderName ? String((body as any).folderName).trim() : null)
+        : (body.folder_name !== undefined
+        ? (body.folder_name ? String(body.folder_name).trim() : null)
+        : null);
+
+    // Normalizzazione: se arrivano blocks usa quelli; se arriva solo la lista piatta exercises, crea un blocco SINGLE
+    let blocksInput = body.blocks;
+    if ((!blocksInput || blocksInput.length === 0) && body.exercises && body.exercises.length > 0) {
+      blocksInput = [
+        {
+          block_type: 'SINGLE',
+          order_index: 1,
+          rounds: 1,
+          rest_between_rounds: 0,
+          exercises: body.exercises,
+        },
+      ];
+    }
+
+    // TRANSAZIONE DRIZZLE PER INSERIMENTO / CLONAZIONE A CASCATA (Opzione A - Physical Cloning)
+    return await db.transaction(async (tx) => {
+      let firstCreatedRoutine: WorkoutRoutine | null = null;
+
+      for (const targetOwnerId of targetOwnerIds) {
+        let finalFolderName = effectiveFolderName;
+
+        if (effectiveFolderId) {
+          const folderRows = await tx
+            .select()
+            .from(routineFolders)
+            .where(eq(routineFolders.id, effectiveFolderId));
+
+          if (folderRows.length === 0) {
+            await tx.insert(routineFolders).values({
+              id: effectiveFolderId,
+              name: effectiveFolderName || 'Cartella',
+              ownerId: targetOwnerId,
+            });
+            if (!finalFolderName) {
+              finalFolderName = effectiveFolderName || 'Cartella';
+            }
+          } else if (!finalFolderName) {
+            finalFolderName = folderRows[0].name;
+          }
+        }
+
+        const insertedRoutines = await tx
+          .insert(workoutRoutines)
+          .values({
+            folderId: effectiveFolderId || null,
+            folderName: finalFolderName || null,
+            borderColor: body.border_color || '#3B82F6',
+            name: body.name.trim(),
+            description: body.description || null,
+            workoutType: body.workout_type || null,
+            durationWeeks: body.duration_weeks || 4,
+            currentWeek: (body as any).current_week || 1,
+            ownerId: targetOwnerId,
+          })
+          .returning();
+
+        const createdRoutine = insertedRoutines[0];
+        const createdBlocks: RoutineBlock[] = [];
+        const flatExercises: RoutineExercise[] = [];
+
+        if (blocksInput && blocksInput.length > 0) {
+          for (let bIdx = 0; bIdx < blocksInput.length; bIdx++) {
+            const blk = blocksInput[bIdx];
+            const blockType = blk.block_type || 'SINGLE';
+            const circuitType =
+              blk.circuit_type ||
+              (blockType === 'CIRCUIT_INTERVAL' ? 'INTERVAL' : 'STANDARD');
+
+            const insertedBlocks = await tx
+              .insert(routineBlocks)
+              .values({
+                routineId: createdRoutine.id,
+                blockType: blockType,
               orderIndex: blk.order_index ?? bIdx + 1,
               rounds: blk.rounds ?? 1,
               restBetweenRounds: blk.rest_between_rounds ?? 0,
+              circuitType: blk.circuit_type || 'STANDARD',
+              intervalWorkSeconds: blk.interval_work_seconds ?? null,
+              intervalRestSeconds: blk.interval_rest_seconds ?? null,
             })
             .returning();
 
@@ -359,7 +447,14 @@ export class RoutineService {
                   const s = ex.sets[sIdx];
                   let drops = s.drops ? s.drops.map((d) => ({ ...d })) : [];
                   const dropPct = s.drop_percentage != null ? Number(s.drop_percentage) : null;
-                  if (s.set_type === 'dropset' && dropPct !== null && dropPct > 0 && drops.length > 1) {
+                  const dropCnt = s.drop_count != null ? Number(s.drop_count) : (drops.length > 0 ? drops.length : 0);
+
+                  const rawSetType = s.set_type ? String(s.set_type).toUpperCase() : 'NORMAL';
+                  const setType = ['WARMUP', 'NORMAL', 'STRIPPING', 'REST_PAUSE'].includes(rawSetType)
+                    ? rawSetType
+                    : (rawSetType === 'DROPSET' ? 'STRIPPING' : rawSetType);
+
+                  if (setType === 'STRIPPING' && dropPct !== null && dropPct > 0 && drops.length > 1) {
                     for (let d = 1; d < drops.length; d++) {
                       const prevKg = Number(drops[d - 1].kg || 0);
                       drops[d].kg = Math.max(0, Math.round(prevKg * (1 - dropPct / 100) * 10) / 10);
@@ -371,14 +466,16 @@ export class RoutineService {
                     .values({
                       routineExerciseId: curEx.id,
                       setNumber: s.set_number ?? sIdx + 1,
-                      setType: s.set_type || 'normal',
+                      setType: setType,
                       targetWeightKg: String(s.target_weight_kg || 0),
                       targetReps: s.target_reps || 0,
                       targetTimeSeconds: s.target_time_seconds || null,
                       bandAssistance: s.band_assistance || 'none',
                       dropsetWeightKg: s.dropset_weight_kg ? String(s.dropset_weight_kg) : null,
                       drops: drops,
-                      dropPercentage: dropPct !== null ? String(dropPct) : null,
+                      dropCount: dropCnt,
+                      dropPercentage: dropPct,
+                      restPauseSeconds: s.rest_pause_seconds != null ? Number(s.rest_pause_seconds) : null,
                       restSeconds: s.rest_seconds || 90,
                       notes: s.notes || null,
                     })
@@ -395,7 +492,9 @@ export class RoutineService {
                     band_assistance: insertedSet[0].bandAssistance as any,
                     dropset_weight_kg: insertedSet[0].dropsetWeightKg ? Number(insertedSet[0].dropsetWeightKg) : undefined,
                     drops: insertedSet[0].drops || [],
+                    drop_count: insertedSet[0].dropCount,
                     drop_percentage: insertedSet[0].dropPercentage ? Number(insertedSet[0].dropPercentage) : undefined,
+                    rest_pause_seconds: insertedSet[0].restPauseSeconds ?? undefined,
                     rest_seconds: insertedSet[0].restSeconds,
                     notes: insertedSet[0].notes || undefined,
                   });
@@ -428,13 +527,16 @@ export class RoutineService {
             order_index: createdBlockRecord.orderIndex,
             rounds: createdBlockRecord.rounds,
             rest_between_rounds: createdBlockRecord.restBetweenRounds ?? 0,
+            circuit_type: createdBlockRecord.circuitType as CircuitType,
+            interval_work_seconds: createdBlockRecord.intervalWorkSeconds,
+            interval_rest_seconds: createdBlockRecord.intervalRestSeconds,
             created_at: createdBlockRecord.createdAt.toISOString(),
             exercises: blockExercises,
           });
         }
       }
 
-      return {
+      const routineResult: WorkoutRoutine = {
         id: createdRoutine.id,
         folder_id: createdRoutine.folderId || undefined,
         folder_name: createdRoutine.folderName || undefined,
@@ -450,8 +552,15 @@ export class RoutineService {
         blocks: createdBlocks,
         exercises: flatExercises,
       };
-    });
-  }
+
+      if (!firstCreatedRoutine) {
+        firstCreatedRoutine = routineResult;
+      }
+    }
+
+    return firstCreatedRoutine!;
+  });
+}
 
   async updateRoutine(
     authUser: AuthenticatedUser,
@@ -497,12 +606,46 @@ export class RoutineService {
 
     // TRANSAZIONE DRIZZLE PER AGGIORNAMENTO ATOMICO A CASCATA
     return await db.transaction(async (tx) => {
+      const effectiveFolderId =
+        (body as any).folderId !== undefined
+          ? ((body as any).folderId ? String((body as any).folderId).trim() : null)
+          : (body.folder_id !== undefined
+          ? (body.folder_id ? String(body.folder_id).trim() : null)
+          : undefined);
+
+      let effectiveFolderName =
+        (body as any).folderName !== undefined
+          ? ((body as any).folderName ? String((body as any).folderName).trim() : null)
+          : (body.folder_name !== undefined
+          ? (body.folder_name ? String(body.folder_name).trim() : null)
+          : undefined);
+
+      if (effectiveFolderId) {
+        const folderRows = await tx
+          .select()
+          .from(routineFolders)
+          .where(eq(routineFolders.id, effectiveFolderId));
+
+        if (folderRows.length === 0) {
+          await tx.insert(routineFolders).values({
+            id: effectiveFolderId,
+            name: effectiveFolderName || 'Cartella',
+            ownerId: r.ownerId,
+          });
+          if (!effectiveFolderName) {
+            effectiveFolderName = 'Cartella';
+          }
+        } else if (!effectiveFolderName) {
+          effectiveFolderName = folderRows[0].name;
+        }
+      }
+
       // 1. Aggiornamento anagrafico routine
       await tx
         .update(workoutRoutines)
         .set({
-          folderId: body.folder_id !== undefined ? (body.folder_id || null) : r.folderId,
-          folderName: body.folder_name !== undefined ? (body.folder_name || null) : r.folderName,
+          folderId: effectiveFolderId !== undefined ? effectiveFolderId : r.folderId,
+          folderName: effectiveFolderName !== undefined ? effectiveFolderName : r.folderName,
           borderColor: body.border_color !== undefined ? body.border_color : r.borderColor,
           name: body.name !== undefined ? body.name.trim() : r.name,
           description: body.description !== undefined ? body.description : r.description,
@@ -538,10 +681,13 @@ export class RoutineService {
             .insert(routineBlocks)
             .values({
               routineId: id,
-              blockType: blk.block_type || 'STANDARD',
+              blockType: blk.block_type || 'SINGLE',
               orderIndex: blk.order_index ?? bIdx + 1,
               rounds: blk.rounds ?? 1,
               restBetweenRounds: blk.rest_between_rounds ?? 0,
+              circuitType: blk.circuit_type || (blk.block_type === 'CIRCUIT_INTERVAL' ? 'INTERVAL' : 'STANDARD'),
+              intervalWorkSeconds: blk.interval_work_seconds ?? null,
+              intervalRestSeconds: blk.interval_rest_seconds ?? null,
             })
             .returning();
 
@@ -572,7 +718,14 @@ export class RoutineService {
                   const s = ex.sets[sIdx];
                   let drops = s.drops ? s.drops.map((d) => ({ ...d })) : [];
                   const dropPct = s.drop_percentage != null ? Number(s.drop_percentage) : null;
-                  if (s.set_type === 'dropset' && dropPct !== null && dropPct > 0 && drops.length > 1) {
+                  const dropCnt = s.drop_count != null ? Number(s.drop_count) : (drops.length > 0 ? drops.length : 0);
+
+                  const rawSetType = s.set_type ? String(s.set_type).toUpperCase() : 'NORMAL';
+                  const setType = ['WARMUP', 'NORMAL', 'STRIPPING', 'REST_PAUSE'].includes(rawSetType)
+                    ? rawSetType
+                    : (rawSetType === 'DROPSET' ? 'STRIPPING' : rawSetType);
+
+                  if (setType === 'STRIPPING' && dropPct !== null && dropPct > 0 && drops.length > 1) {
                     for (let d = 1; d < drops.length; d++) {
                       const prevKg = Number(drops[d - 1].kg || 0);
                       drops[d].kg = Math.max(0, Math.round(prevKg * (1 - dropPct / 100) * 10) / 10);
@@ -582,14 +735,16 @@ export class RoutineService {
                   await tx.insert(routineExerciseSets).values({
                     routineExerciseId: curEx.id,
                     setNumber: s.set_number ?? sIdx + 1,
-                    setType: s.set_type || 'normal',
+                    setType: setType,
                     targetWeightKg: String(s.target_weight_kg || 0),
                     targetReps: s.target_reps || 0,
                     targetTimeSeconds: s.target_time_seconds || null,
                     bandAssistance: s.band_assistance || 'none',
                     dropsetWeightKg: s.dropset_weight_kg ? String(s.dropset_weight_kg) : null,
                     drops: drops,
-                    dropPercentage: dropPct !== null ? String(dropPct) : null,
+                    dropCount: dropCnt,
+                    dropPercentage: dropPct,
+                    restPauseSeconds: s.rest_pause_seconds != null ? Number(s.rest_pause_seconds) : null,
                     restSeconds: s.rest_seconds || 90,
                     notes: s.notes || null,
                   });

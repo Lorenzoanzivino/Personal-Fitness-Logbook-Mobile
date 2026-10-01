@@ -23,6 +23,16 @@ export type SetType =
 
 export type BandAssistance = 'none' | 'light' | 'medium' | 'heavy' | 'weighted';
 
+export type RoutineBlockType =
+  | 'SINGLE'
+  | 'SUPERSERIE'
+  | 'CIRCUIT_STANDARD'
+  | 'CIRCUIT_INTERVAL'
+  | 'STANDARD'
+  | 'SUPERSET'
+  | 'CIRCUIT';
+export type CircuitType = 'STANDARD' | 'INTERVAL';
+
 export interface RoutineFolder {
   id: string;
   name: string;
@@ -61,6 +71,7 @@ export interface ExerciseSet {
   dropset_weight_kg?: number | null;
   drops?: SetDropStep[];
   drop_count?: number;
+  rest_pause_seconds?: number | null;
   rest_seconds?: number | null;
   rpe?: number | null;
   notes?: string | null;
@@ -117,7 +128,7 @@ export interface RoutineExercise {
   routine_id?: number;
   exercise_id: number;
   exercise_order: number;
-  intra_rest_seconds?: number | null;
+  intra_rest_seconds?: number;
   superset_group?: string | null;
   custom_description?: string | null;
   custom_video_url?: string | null;
@@ -126,28 +137,18 @@ export interface RoutineExercise {
   sets: RoutineExerciseSet[];
 }
 
-export type RoutineBlockType =
-  | 'SINGLE'
-  | 'SUPERSERIE'
-  | 'CIRCUIT_STANDARD'
-  | 'CIRCUIT_INTERVAL'
-  | 'STANDARD'
-  | 'SUPERSET'
-  | 'CIRCUIT';
-export type CircuitType = 'STANDARD' | 'INTERVAL';
-
 export interface RoutineBlock {
   id?: number;
   routine_id?: number;
   block_type: RoutineBlockType;
   order_index: number;
   rounds: number;
-  rest_between_rounds?: number | null;
+  rest_between_rounds: number;
   circuit_type?: CircuitType | null;
   interval_work_seconds?: number | null;
   interval_rest_seconds?: number | null;
   created_at?: string;
-  exercises: RoutineExercise[];
+  exercises?: RoutineExercise[];
 }
 
 export interface WorkoutRoutine {

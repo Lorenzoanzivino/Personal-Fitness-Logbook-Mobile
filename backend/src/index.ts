@@ -1,7 +1,7 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import jwt from '@fastify/jwt';
-import * as dotenv from 'dotenv';
+import './config/env';
 import { authenticate, requireTrainer } from './middleware/auth';
 import { runMigrationsAndSeed } from './db/migrate';
 import { authRoutes } from './routes/authRoutes';
@@ -15,8 +15,6 @@ import { profileRoutes } from './routes/profileRoutes';
 import { measurementRoutes } from './routes/measurementRoutes';
 import { healthRoutes } from './routes/healthRoutes';
 
-dotenv.config();
-
 const port = parseInt(process.env.PORT || '8000', 10);
 const host = '0.0.0.0';
 
@@ -29,11 +27,13 @@ async function buildApp() {
     ignoreTrailingSlash: true,
   });
 
-  // Registrazione CORS per Expo Mobile (LAN, localhost, emulatori)
+  // Registrazione CORS per Expo Mobile (LAN, localhost, Expo Web, emulatori)
   await fastify.register(cors, {
     origin: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Origin', 'X-Requested-With'],
+    exposedHeaders: ['*'],
   });
 
   // Registrazione JWT
@@ -65,12 +65,13 @@ async function start() {
     // 1. Migrazioni e Seeding automatico dello schema decoupled
     await runMigrationsAndSeed();
 
-    // 2. Avvio Server Fastify
+    // 2. Avvio Server Fastify con bind esplicito su 0.0.0.0 (LAN + Localhost)
     const app = await buildApp();
     await app.ready();
     console.log('📋 [FASTIFY ROUTE TREE]:\n' + app.printRoutes());
-    await app.listen({ port, host });
-    app.log.info(`🚀 Server Fastify in ascolto su http://${host}:${port}`);
+    await app.listen({ port, host: '0.0.0.0' });
+    console.log(`🚀 [FASTIFY BIND] In ascolto su http://0.0.0.0:${port} (accessibile sia da localhost che da IP LAN)`);
+    app.log.info(`🚀 Server Fastify in ascolto su http://0.0.0.0:${port}`);
   } catch (err) {
     console.error('❌ Errore fatale avvio server:', err);
     process.exit(1);
