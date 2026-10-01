@@ -17,7 +17,7 @@ import { Card } from '../../components/Card';
 import { Avatar } from '../../components/Avatar';
 import { CustomConfirmModal } from '../../components/CustomConfirmModal';
 import { ScreenBackgroundWrapper } from '../../components/ScreenBackgroundWrapper';
-import { DatePickerInput } from '../../components/DatePickerInput';
+import { DatePickerInput, normalizeToDDMMYYYY } from '../../components/DatePickerInput';
 import { useAuth } from '../../context/AuthContext';
 
 export const ClientOnboardingScreen: React.FC = () => {
@@ -33,7 +33,7 @@ export const ClientOnboardingScreen: React.FC = () => {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [heightCm, setHeightCm] = useState(user?.height_cm ? String(user.height_cm) : '');
-  const [birthDate, setBirthDate] = useState(user?.birth_date || '');
+  const [birthDate, setBirthDate] = useState(normalizeToDDMMYYYY(user?.birth_date || ''));
 
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -95,8 +95,12 @@ export const ClientOnboardingScreen: React.FC = () => {
     }
 
     // 7. Validazione Data di Nascita (DD-MM-YYYY)
+    const cleanDate = normalizeToDDMMYYYY(birthDate);
+    if (cleanDate !== birthDate) {
+      setBirthDate(cleanDate);
+    }
     const dateRegex = /^(\d{2})-(\d{2})-(\d{4})$/;
-    const match = birthDate.trim().match(dateRegex);
+    const match = cleanDate.match(dateRegex);
     if (!match) {
       setErrorMsg('La Data di Nascita deve essere nel formato DD-MM-YYYY (es. 15-05-1996).');
       return;
@@ -118,7 +122,7 @@ export const ClientOnboardingScreen: React.FC = () => {
         lastName: cleanLast,
         password: cleanPass,
         height: parsedHeight,
-        dateOfBirth: birthDate.trim(),
+        dateOfBirth: cleanDate,
         avatar_url: avatarUri,
       });
 

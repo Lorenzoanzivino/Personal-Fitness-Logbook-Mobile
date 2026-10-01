@@ -20,12 +20,13 @@ import {
   SetDropStep,
   RoutineBlockType,
   RoutineBlock,
+  CircuitType,
 } from '../../types/workout';
 import { colors } from '../../theme/colors';
 import { layout } from '../../theme/spacing';
 import { typography } from '../../theme/typography';
 import { Card } from '../../components/Card';
-import { ImmersiveTimerOverlay } from '../../components/ImmersiveTimerOverlay';
+import { ImmersiveTimerOverlay, IntervalCircuitConfig } from '../../components/ImmersiveTimerOverlay';
 import { CustomConfirmModal } from '../../components/CustomConfirmModal';
 import { ToastFeedback, ToastType } from '../../components/ToastFeedback';
 import { YouTubeModalOverlay } from '../../components/YouTubeModalOverlay';
@@ -53,6 +54,9 @@ interface LiveExerciseState {
   blockId: number | string;
   circuitRounds: number;
   circuitRestBetweenRounds: number;
+  circuitType?: CircuitType | null;
+  intervalWorkSeconds?: number | null;
+  intervalRestSeconds?: number | null;
   intraRestSeconds: number;
   supersetGroup: string | null;
   restSeconds: number;
@@ -124,8 +128,11 @@ export const WorkoutModal: React.FC = () => {
     seconds: number;
     exerciseName: string;
     setNumberText: string;
-    timerMode?: 'rest' | 'work';
+    timerMode?: 'rest' | 'work' | 'interval';
     targetSetCallback: () => void;
+    intervalConfig?: IntervalCircuitConfig;
+    onStationComplete?: (roundIndex: number, stationIndex: number) => void;
+    onCircuitComplete?: () => void;
   }>({
     visible: false,
     seconds: 90,
@@ -281,10 +288,31 @@ export const WorkoutModal: React.FC = () => {
         let orderCounter = 1;
 
         selectedRoutine.blocks.forEach((block, bIdx) => {
-          const bType: RoutineBlockType = block.block_type || 'STANDARD';
+          let bType: RoutineBlockType = block.block_type || 'STANDARD';
+          if ((bType as string) === 'CIRCUIT') {
+            bType = block.circuit_type === 'INTERVAL' ? 'CIRCUIT_INTERVAL' : 'CIRCUIT_STANDARD';
+          } else if ((bType as string) === 'STANDARD') {
+            bType = block.exercises && block.exercises.length > 1 ? 'CIRCUIT_STANDARD' : 'SINGLE';
+          } else if ((bType as string) === 'SUPERSET') {
+            bType = 'SUPERSERIE';
+          }
+
+          const isCircuit =
+            bType === 'CIRCUIT' ||
+            bType === 'CIRCUIT_STANDARD' ||
+            bType === 'CIRCUIT_INTERVAL';
+          const isInterval =
+            bType === 'CIRCUIT_INTERVAL' ||
+            block.circuit_type === 'INTERVAL';
+          const bCircuitType: CircuitType = isInterval ? 'INTERVAL' : 'STANDARD';
+
           const bId = block.id ?? `blk-${bIdx}`;
-          const bRounds = bType === 'CIRCUIT' ? (block.rounds || 3) : 1;
-          const bRestBetweenRounds = bType === 'CIRCUIT' ? (block.rest_between_rounds ?? 60) : 0;
+          const bWorkSecs = block.interval_work_seconds ?? 40;
+          const bRestSecs = block.interval_rest_seconds ?? 20;
+          const bRounds = isCircuit ? (block.rounds || 3) : 1;
+          const bRestBetweenRounds = isCircuit
+            ? (block.rest_between_rounds ?? (isInterval ? 0 : 60))
+            : 0;
 
           (block.exercises || []).forEach((re) => {
             const fullExercise =
@@ -294,38 +322,68 @@ export const WorkoutModal: React.FC = () => {
             const exerciseType: ExerciseType = fullExercise ? fullExercise.exercise_type : 'reps';
             const description = re.custom_description ?? fullExercise?.description ?? null;
             const videoUrl = re.custom_video_url ?? fullExercise?.video_url ?? null;
-            const intraRest = re.intra_rest_seconds ?? (bType === 'CIRCUIT' ? 15 : 0);
+            const intraRest = re.intra_rest_seconds ?? (isCircuit ? (isInterval ? bRestSecs : 15) : 0);
 
             let sets: LiveSetState[] = [];
 
-            if (bType === 'CIRCUIT') {
+            if (isCircuit) {
               // Circuit execution: Each round corresponds to a set!
-              const firstSet = (re.sets && re.sets[0]) || {
+              const firstRaw = re.sets && re.sets[0];
+              const firstSTime = Number(firstRaw?.target_time_seconds || (firstRaw as any)?.targetTimeSeconds || (firstRaw as any)?.time_seconds || (firstRaw as any)?.timeSeconds || 0);
+              const firstSReps = Number(firstRaw?.target_reps != null ? firstRaw.target_reps : ((firstRaw as any)?.targetReps != null ? (firstRaw as any).targetReps : ((firstRaw as any)?.reps != null ? (firstRaw as any).reps : 0)));
+              const firstSWeight = Number(firstRaw?.target_weight_kg ?? (firstRaw as any)?.targetWeightKg ?? (firstRaw as any)?.weight_kg ?? 0);
+              const firstSBand = (firstRaw?.band_assistance as any) || (firstRaw as any)?.bandAssistance || 'none';
+
+              const firstEffectiveTime = isInterval
+                ? (firstSTime > 0 ? firstSTime : bWorkSecs)
+                : (exerciseType === 'time' || firstSTime > 0 ? (firstSTime > 0 ? firstSTime : 60) : null);
+              const firstEffectiveReps = isInterval
+                ? firstSReps
+                : (exerciseType === 'time' || firstSTime > 0 ? 0 : (firstSReps > 0 ? firstSReps : 10));
+
+              const firstSet = firstRaw || {
                 set_number: 1,
                 set_type: 'normal',
-                target_weight_kg: 0,
-                target_reps: exerciseType === 'time' ? 0 : 10,
-                target_time_seconds: exerciseType === 'time' ? 60 : null,
-                band_assistance: 'none',
+                target_weight_kg: firstSWeight,
+                target_reps: firstEffectiveReps,
+                target_time_seconds: firstEffectiveTime,
+                band_assistance: firstSBand,
                 rest_seconds: intraRest,
               };
 
               for (let r = 1; r <= bRounds; r++) {
-                const s = (re.sets && re.sets[r - 1]) || firstSet;
+                const s = (re.sets && re.sets[r - 1]) || firstRaw || firstSet;
+                const sTime = Number(s.target_time_seconds || (s as any).targetTimeSeconds || (s as any).time_seconds || (s as any).timeSeconds || 0);
+                const sReps = Number(s.target_reps != null ? s.target_reps : ((s as any).targetReps != null ? (s as any).targetReps : ((s as any).reps != null ? (s as any).reps : 0)));
+                const sWeight = Number(s.target_weight_kg ?? (s as any).targetWeightKg ?? (s as any).weight_kg ?? 0);
+                const sBand = (s.band_assistance as any) || (s as any).bandAssistance || 'none';
+
+                let effectiveTime: number | null = null;
+                let effectiveReps = 0;
+
+                if (isInterval) {
+                  effectiveTime = sTime > 0 ? sTime : bWorkSecs;
+                  effectiveReps = sReps;
+                } else {
+                  const isTimeBased = exerciseType === 'time' || sTime > 0;
+                  effectiveTime = isTimeBased ? (sTime > 0 ? sTime : 60) : null;
+                  effectiveReps = isTimeBased ? 0 : (sReps > 0 ? sReps : 10);
+                }
+
                 sets.push({
-                  tempId: `live-set-${re.exercise_id}-r${r}-${Date.now()}`,
+                  tempId: `live-set-${re.exercise_id}-r${r}-${Date.now()}-${r}`,
                   set_number: r,
                   set_type: (s.set_type as any) || 'normal',
-                  weight_kg: Number(s.target_weight_kg || 0),
-                  reps: s.target_reps || (exerciseType === 'time' ? 0 : 10),
-                  time_seconds: s.target_time_seconds || (exerciseType === 'time' ? 60 : null),
-                  band_assistance: (s.band_assistance as any) || 'none',
+                  weight_kg: sWeight,
+                  reps: effectiveReps,
+                  time_seconds: effectiveTime,
+                  band_assistance: sBand,
                   dropset_weight_kg: s.dropset_weight_kg ? Number(s.dropset_weight_kg) : null,
                   drops: s.drops ? s.drops.map((d) => ({ id: d.id, kg: d.kg || 0, reps: d.reps || 8, rest_seconds: d.rest_seconds })) : undefined,
                   rest_seconds: intraRest,
-                  targetWeightKg: Number(s.target_weight_kg || 0),
-                  targetReps: s.target_reps || (exerciseType === 'time' ? 0 : 10),
-                  targetTimeSeconds: s.target_time_seconds || (exerciseType === 'time' ? 60 : null),
+                  targetWeightKg: sWeight,
+                  targetReps: effectiveReps,
+                  targetTimeSeconds: effectiveTime,
                   completed: false,
                 });
               }
@@ -336,6 +394,17 @@ export const WorkoutModal: React.FC = () => {
                 const normalizedSetType = String(s.set_type || 'normal').toLowerCase();
                 const dropCount = Math.max(2, (s as any).drop_count || (normalizedSetType === 'rest_pause' ? 3 : 2));
                 const rpRest = (s as any).rest_pause_seconds ?? 20;
+
+                const sTime = Number(s.target_time_seconds || (s as any).targetTimeSeconds || (s as any).time_seconds || (s as any).timeSeconds || 0);
+                const isTimeBased = exerciseType === 'time' || sTime > 0;
+                const effectiveTime = isTimeBased ? (sTime > 0 ? sTime : 60) : null;
+                const effectiveReps = isTimeBased
+                  ? 0
+                  : (s.target_reps != null && Number(s.target_reps) > 0
+                    ? Number(s.target_reps)
+                    : ((s as any).targetReps != null && Number((s as any).targetReps) > 0
+                    ? Number((s as any).targetReps)
+                    : 10));
 
                 if (s.drops && s.drops.length > 0) {
                   mappedDrops = s.drops.map((d) => ({
@@ -350,12 +419,12 @@ export const WorkoutModal: React.FC = () => {
                   mappedDrops = Array.from({ length: dropCount }).map((_, dIdx) => ({
                     id: `d${dIdx + 1}-${sIdx}`,
                     kg: dIdx === 0 ? baseKg : Math.max(0, Math.round(baseKg * (1 - (dIdx * dropPct) / 100))),
-                    reps: s.target_reps || 8,
+                    reps: effectiveReps || 8,
                     rest_seconds: 0,
                   }));
                 } else if (normalizedSetType === 'rest_pause') {
                   const baseKg = Number(s.target_weight_kg || 0);
-                  const firstReps = s.target_reps || 10;
+                  const firstReps = effectiveReps || 10;
                   const clusterReps = Math.max(2, Math.floor(firstReps / 2)) || 4;
                   mappedDrops = Array.from({ length: dropCount }).map((_, cIdx) => ({
                     id: `rp${cIdx + 1}-${sIdx}`,
@@ -370,8 +439,8 @@ export const WorkoutModal: React.FC = () => {
                   set_number: s.set_number,
                   set_type: (s.set_type as any) || 'normal',
                   weight_kg: Number(s.target_weight_kg || 0),
-                  reps: s.target_reps || (exerciseType === 'time' ? 0 : 10),
-                  time_seconds: s.target_time_seconds || (exerciseType === 'time' ? 60 : null),
+                  reps: effectiveReps,
+                  time_seconds: effectiveTime,
                   band_assistance: (s.band_assistance as any) || 'none',
                   dropset_weight_kg: s.dropset_weight_kg ? Number(s.dropset_weight_kg) : null,
                   drops: mappedDrops,
@@ -379,8 +448,8 @@ export const WorkoutModal: React.FC = () => {
                   rest_pause_seconds: rpRest,
                   rest_seconds: s.rest_seconds || 90,
                   targetWeightKg: Number(s.target_weight_kg || 0),
-                  targetReps: s.target_reps || (exerciseType === 'time' ? 0 : 10),
-                  targetTimeSeconds: s.target_time_seconds || (exerciseType === 'time' ? 60 : null),
+                  targetReps: effectiveReps,
+                  targetTimeSeconds: effectiveTime,
                   completed: false,
                 };
               });
@@ -398,8 +467,11 @@ export const WorkoutModal: React.FC = () => {
               blockId: bId,
               circuitRounds: bRounds,
               circuitRestBetweenRounds: bRestBetweenRounds,
+              circuitType: bCircuitType,
+              intervalWorkSeconds: bWorkSecs,
+              intervalRestSeconds: bRestSecs,
               intraRestSeconds: intraRest,
-              supersetGroup: re.superset_group || (bType === 'SUPERSET' ? `SS-${bId}` : null),
+              supersetGroup: re.superset_group || (bType === 'SUPERSERIE' || bType === 'SUPERSET' ? `SS-${bId}` : null),
               restSeconds: defaultRest,
               description,
               videoUrl,
@@ -425,6 +497,17 @@ export const WorkoutModal: React.FC = () => {
             const dropCount = Math.max(2, (s as any).drop_count || (normalizedSetType === 'rest_pause' ? 3 : 2));
             const rpRest = (s as any).rest_pause_seconds ?? 20;
 
+            const sTime = Number(s.target_time_seconds || (s as any).targetTimeSeconds || (s as any).time_seconds || (s as any).timeSeconds || 0);
+            const isTimeBased = exerciseType === 'time' || sTime > 0;
+            const effectiveTime = isTimeBased ? (sTime > 0 ? sTime : 60) : null;
+            const effectiveReps = isTimeBased
+              ? 0
+              : (s.target_reps != null && Number(s.target_reps) > 0
+                ? Number(s.target_reps)
+                : ((s as any).targetReps != null && Number((s as any).targetReps) > 0
+                ? Number((s as any).targetReps)
+                : 10));
+
             if (s.drops && s.drops.length > 0) {
               mappedDrops = s.drops.map((d) => ({
                 id: d.id,
@@ -438,12 +521,12 @@ export const WorkoutModal: React.FC = () => {
               mappedDrops = Array.from({ length: dropCount }).map((_, dIdx) => ({
                 id: `d${dIdx + 1}-${sIdx}`,
                 kg: dIdx === 0 ? baseKg : Math.max(0, Math.round(baseKg * (1 - (dIdx * dropPct) / 100))),
-                reps: s.target_reps || 8,
+                reps: effectiveReps || 8,
                 rest_seconds: 0,
               }));
             } else if (normalizedSetType === 'rest_pause') {
               const baseKg = Number(s.target_weight_kg || 0);
-              const firstReps = s.target_reps || 10;
+              const firstReps = effectiveReps || 10;
               const clusterReps = Math.max(2, Math.floor(firstReps / 2)) || 4;
               mappedDrops = Array.from({ length: dropCount }).map((_, cIdx) => ({
                 id: `rp${cIdx + 1}-${sIdx}`,
@@ -458,8 +541,8 @@ export const WorkoutModal: React.FC = () => {
               set_number: s.set_number,
               set_type: (s.set_type as any) || 'normal',
               weight_kg: Number(s.target_weight_kg || 0),
-              reps: s.target_reps || (exerciseType === 'time' ? 0 : 10),
-              time_seconds: s.target_time_seconds || (exerciseType === 'time' ? 60 : null),
+              reps: effectiveReps,
+              time_seconds: effectiveTime,
               band_assistance: (s.band_assistance as any) || 'none',
               dropset_weight_kg: s.dropset_weight_kg ? Number(s.dropset_weight_kg) : null,
               drops: mappedDrops,
@@ -467,8 +550,8 @@ export const WorkoutModal: React.FC = () => {
               rest_pause_seconds: rpRest,
               rest_seconds: s.rest_seconds || 90,
               targetWeightKg: Number(s.target_weight_kg || 0),
-              targetReps: s.target_reps || (exerciseType === 'time' ? 0 : 10),
-              targetTimeSeconds: s.target_time_seconds || (exerciseType === 'time' ? 60 : null),
+              targetReps: effectiveReps,
+              targetTimeSeconds: effectiveTime,
               completed: false,
             };
           });
@@ -481,10 +564,13 @@ export const WorkoutModal: React.FC = () => {
             muscleGroup,
             exerciseType,
             exerciseOrder: idx + 1,
-            blockType: re.superset_group ? 'SUPERSET' : 'STANDARD',
+            blockType: re.superset_group ? 'SUPERSERIE' : 'SINGLE',
             blockId: re.superset_group ? `ss-${re.superset_group}` : `std-${idx}`,
             circuitRounds: 1,
             circuitRestBetweenRounds: 0,
+            circuitType: null,
+            intervalWorkSeconds: null,
+            intervalRestSeconds: null,
             intraRestSeconds: re.intra_rest_seconds ?? 0,
             supersetGroup: re.superset_group || null,
             restSeconds: defaultRest,
@@ -510,7 +596,8 @@ export const WorkoutModal: React.FC = () => {
       return '--';
     }
     const s = prevPerf.sets[setIdx];
-    if (exerciseType === 'time') {
+    const isPrevTime = exerciseType === 'time' || Boolean(s.time_seconds && Number(s.time_seconds) > 0);
+    if (isPrevTime) {
       return `${s.time_seconds || 0}s`;
     }
     if (exerciseType === 'bodyweight') {
@@ -529,12 +616,41 @@ export const WorkoutModal: React.FC = () => {
 
   const getTargetSetSummary = (
     set: LiveSetState,
-    exerciseType: ExerciseType
+    exerciseType: ExerciseType,
+    isIntervalCircuit?: boolean
   ): string => {
-    const isTime = exerciseType === 'time' || Boolean(
-      (set.targetTimeSeconds && set.targetTimeSeconds > 0 && (!set.targetReps || set.targetReps === 0)) ||
-      (set.time_seconds && set.time_seconds > 0 && (!set.reps || set.reps === 0))
-    );
+    if (isIntervalCircuit) {
+      const timeVal = set.targetTimeSeconds || set.time_seconds || 0;
+      let loadPart = '';
+      const band = set.band_assistance;
+      if (exerciseType === 'bodyweight' || (band && band !== 'none')) {
+        if (band === 'weighted') loadPart = `+${set.targetWeightKg || 0}kg`;
+        else if (band === 'light') loadPart = 'Elastico bassa';
+        else if (band === 'medium') loadPart = 'Elastico media';
+        else if (band === 'heavy') loadPart = 'Elastico alta';
+        else loadPart = 'Corpo libero';
+      } else if (Number(set.targetWeightKg) > 0) {
+        loadPart = `${set.targetWeightKg}kg`;
+      }
+      const reps = Number(set.targetReps != null ? set.targetReps : (set.reps || 0));
+      const parts: string[] = [];
+      if (timeVal > 0) parts.push(`⏱️ ${timeVal}s`);
+      if (loadPart && reps > 0) {
+        parts.push(`${loadPart} × ${reps}`);
+      } else if (loadPart) {
+        parts.push(loadPart);
+      } else if (reps > 0) {
+        parts.push(`${reps} reps`);
+      }
+      return parts.join(' • ') || (timeVal > 0 ? `⏱️ ${timeVal}s` : 'Intervallo');
+    }
+
+    const isTime =
+      exerciseType === 'time' ||
+      Boolean(
+        (set.targetTimeSeconds != null && Number(set.targetTimeSeconds) > 0) ||
+        (set.time_seconds != null && Number(set.time_seconds) > 0)
+      );
     if (isTime) {
       return `⏱️ ${set.targetTimeSeconds || set.time_seconds || 60}s`;
     }
@@ -992,6 +1108,49 @@ export const WorkoutModal: React.FC = () => {
     });
   };
 
+  const handleStartHandsFreeInterval = (secIdx: number) => {
+    const section = sections[secIdx];
+    if (!section || section.type !== 'circuit') return;
+
+    const groupExs = section.exerciseIndices.map((i) => liveExercises[i]);
+    const totalRounds = section.rounds || 3;
+    const workSecs = section.intervalWorkSeconds || 40;
+    const restSecs = section.intervalRestSeconds || 20;
+
+    const config: IntervalCircuitConfig = {
+      rounds: totalRounds,
+      workSeconds: workSecs,
+      restSeconds: restSecs,
+      prepareSeconds: 10,
+      exercises: groupExs.map((ex) => {
+        const firstSet = ex.sets[0];
+        return {
+          name: ex.name,
+          weightKg: firstSet?.weight_kg || 0,
+          bandAssistance: firstSet?.band_assistance || 'none',
+          muscleGroup: ex.muscleGroup,
+        };
+      }),
+    };
+
+    setTimerOverlay({
+      visible: true,
+      seconds: workSecs,
+      timerMode: 'interval',
+      exerciseName: groupExs[0]?.name || 'Circuito',
+      setNumberText: `Interval Training • ${totalRounds} Giri (${workSecs}s / ${restSecs}s)`,
+      targetSetCallback: () => {},
+      intervalConfig: config,
+      onStationComplete: (roundIndex, stationIndex) => {
+        handleToggleCompleteCircuitSet(secIdx, stationIndex, roundIndex, true);
+      },
+      onCircuitComplete: () => {
+        showToast('success', '🏆 Interval Training completato con successo!');
+        setTimerOverlay((prev) => ({ ...prev, visible: false }));
+      },
+    });
+  };
+
   const handleStartSupersetWorkTimer = (
     secIdx: number,
     exIdx: number,
@@ -1127,6 +1286,9 @@ export const WorkoutModal: React.FC = () => {
     type: 'standalone' | 'superset' | 'circuit';
     blockType: RoutineBlockType;
     blockId: number | string;
+    circuitType?: CircuitType | null;
+    intervalWorkSeconds?: number | null;
+    intervalRestSeconds?: number | null;
     supersetGroup?: string;
     rounds: number;
     restBetweenRounds: number;
@@ -1139,30 +1301,56 @@ export const WorkoutModal: React.FC = () => {
   liveExercises.forEach((ex, idx) => {
     if (handledIndices.has(idx)) return;
 
-    if (ex.blockType === 'CIRCUIT') {
+    const isCircuit =
+      ex.blockType === 'CIRCUIT_STANDARD' ||
+      ex.blockType === 'CIRCUIT_INTERVAL' ||
+      ex.blockType === 'CIRCUIT';
+
+    if (isCircuit) {
       const bId = ex.blockId;
       const groupIndices: number[] = [];
       liveExercises.forEach((otherEx, oIdx) => {
-        if (otherEx.blockId === bId && otherEx.blockType === 'CIRCUIT') {
+        const otherIsCircuit =
+          otherEx.blockType === 'CIRCUIT_STANDARD' ||
+          otherEx.blockType === 'CIRCUIT_INTERVAL' ||
+          otherEx.blockType === 'CIRCUIT';
+        if (otherEx.blockId === bId && otherIsCircuit) {
           groupIndices.push(oIdx);
           handledIndices.add(oIdx);
         }
       });
+
+      const isInterval =
+        ex.blockType === 'CIRCUIT_INTERVAL' ||
+        ex.circuitType === 'INTERVAL';
+
       sections.push({
         type: 'circuit',
-        blockType: 'CIRCUIT',
+        blockType: ex.blockType,
+        circuitType: isInterval ? 'INTERVAL' : 'STANDARD',
         blockId: bId,
         rounds: ex.circuitRounds || 3,
-        restBetweenRounds: ex.circuitRestBetweenRounds ?? 60,
+        restBetweenRounds: ex.circuitRestBetweenRounds ?? (isInterval ? 0 : 60),
+        intervalWorkSeconds: ex.intervalWorkSeconds ?? 40,
+        intervalRestSeconds: ex.intervalRestSeconds ?? 20,
         exerciseIndices: groupIndices,
       });
-    } else if (ex.blockType === 'SUPERSET' || ex.supersetGroup) {
+    } else if (
+      ex.blockType === 'SUPERSET' ||
+      ex.blockType === 'SUPERSERIE' ||
+      Boolean(ex.supersetGroup)
+    ) {
       const group = ex.supersetGroup || String(ex.blockId);
       const groupIndices: number[] = [];
       liveExercises.forEach((otherEx, oIdx) => {
+        const otherIsSuperset =
+          otherEx.blockType === 'SUPERSET' ||
+          otherEx.blockType === 'SUPERSERIE' ||
+          Boolean(otherEx.supersetGroup);
         if (
-          (otherEx.supersetGroup && otherEx.supersetGroup === group) ||
-          (otherEx.blockId && otherEx.blockId === ex.blockId && otherEx.blockType === 'SUPERSET')
+          otherIsSuperset &&
+          ((otherEx.supersetGroup && otherEx.supersetGroup === group) ||
+            (otherEx.blockId != null && otherEx.blockId === ex.blockId))
         ) {
           groupIndices.push(oIdx);
           handledIndices.add(oIdx);
@@ -1170,7 +1358,7 @@ export const WorkoutModal: React.FC = () => {
       });
       sections.push({
         type: 'superset',
-        blockType: 'SUPERSET',
+        blockType: ex.blockType === 'SUPERSET' ? 'SUPERSET' : 'SUPERSERIE',
         blockId: ex.blockId,
         supersetGroup: ex.supersetGroup || 'A',
         rounds: 1,
@@ -1180,7 +1368,7 @@ export const WorkoutModal: React.FC = () => {
     } else {
       sections.push({
         type: 'standalone',
-        blockType: 'STANDARD',
+        blockType: 'SINGLE',
         blockId: ex.blockId,
         rounds: 1,
         restBetweenRounds: 0,
@@ -1207,6 +1395,9 @@ export const WorkoutModal: React.FC = () => {
         timerMode={timerOverlay.timerMode}
         exerciseName={timerOverlay.exerciseName}
         setNumberText={timerOverlay.setNumberText}
+        intervalConfig={timerOverlay.intervalConfig}
+        onStationComplete={timerOverlay.onStationComplete}
+        onCircuitComplete={timerOverlay.onCircuitComplete}
         onComplete={timerOverlay.targetSetCallback}
         onDismiss={() => setTimerOverlay((prev) => ({ ...prev, visible: false }))}
       />
@@ -1324,6 +1515,9 @@ export const WorkoutModal: React.FC = () => {
               ex: liveExercises[i],
             }));
             const totalRounds = section.rounds || 3;
+            const isInterval =
+              section.blockType === 'CIRCUIT_INTERVAL' ||
+              section.circuitType === 'INTERVAL';
 
             const isRoundDone = (rIdx: number) => {
               return groupExs.every((g) => g.ex.sets[rIdx]?.completed);
@@ -1341,20 +1535,40 @@ export const WorkoutModal: React.FC = () => {
             const currentRoundNumber = currentActiveRoundIdx + 1;
 
             return (
-              <Card key={`circuit-section-${secIdx}`} style={styles.circuitSectionCard}>
+              <Card
+                key={`circuit-section-${secIdx}`}
+                style={[
+                  styles.circuitSectionCard,
+                  isInterval ? styles.circuitSectionCardInterval : styles.circuitSectionCardStandard,
+                ]}
+              >
                 {/* Circuit Block Header */}
                 <View style={styles.circuitBlockHeader}>
-                  <View style={{ flex: 1 }}>
-                    <View style={styles.circuitTagBadge}>
-                      <Text style={styles.circuitTagBadgeText}>
-                        🔄 CIRCUITO - {allCircuitDone ? 'COMPLETATO' : `GIRO ${currentRoundNumber} DI ${totalRounds}`}
+                  <View style={{ flex: 1, marginRight: 8 }}>
+                    <View
+                      style={[
+                        styles.circuitTagBadge,
+                        isInterval ? styles.circuitTagBadgeInterval : styles.circuitTagBadgeStandard,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.circuitTagBadgeText,
+                          isInterval ? styles.circuitTagBadgeTextInterval : styles.circuitTagBadgeTextStandard,
+                        ]}
+                      >
+                        {isInterval
+                          ? `⚡ INTERVAL TRAINING - ${allCircuitDone ? 'COMPLETATO' : `GIRO ${currentRoundNumber} DI ${totalRounds}`}`
+                          : `🔄 CIRCUITO STANDARD - ${allCircuitDone ? 'COMPLETATO' : `GIRO ${currentRoundNumber} DI ${totalRounds}`}`}
                       </Text>
                     </View>
                     <Text style={typography.h3}>
                       {groupExs.map((g) => g.ex.name).join(' → ')}
                     </Text>
                     <Text style={typography.caption}>
-                      🔄 {totalRounds} Giri • ⏱️ Fine giro {section.restBetweenRounds}s
+                      {isInterval
+                        ? `⚡ ${totalRounds} Giri • ⏱️ ${section.intervalWorkSeconds || 40}s Lavoro / ${section.intervalRestSeconds || 20}s Recupero`
+                        : `🔄 ${totalRounds} Giri • ⏱️ Fine giro ${section.restBetweenRounds}s`}
                     </Text>
                   </View>
 
@@ -1370,13 +1584,30 @@ export const WorkoutModal: React.FC = () => {
                   </Pressable>
                 </View>
 
+                {/* Pulsante HANDS-FREE per INTERVAL TRAINING */}
+                {isInterval && !collapsedSectionIdxs.has(secIdx) && (
+                  <Pressable
+                    onPress={() => handleStartHandsFreeInterval(secIdx)}
+                    style={({ pressed }) => [
+                      styles.startHandsFreeBtn,
+                      pressed && { opacity: 0.85 },
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityLabel="Avvia Interval Training Hands-Free"
+                  >
+                    <Text style={styles.startHandsFreeBtnText}>
+                      ▶ AVVIA INTERVAL TRAINING (HANDS-FREE)
+                    </Text>
+                  </Pressable>
+                )}
+
                 {collapsedSectionIdxs.has(secIdx) ? (
                   <Pressable
                     onPress={() => toggleSectionCollapse(secIdx)}
                     style={styles.collapsedSummaryRow}
                   >
                     <Text style={styles.collapsedSummaryText}>
-                      🔄 Circuito • {groupExs.map((g) => g.ex.name).join(' → ')} • Tocca per espandere
+                      {isInterval ? '⚡ Interval Training' : '🔄 Circuito'} • {groupExs.map((g) => g.ex.name).join(' → ')} • Tocca per espandere
                     </Text>
                   </Pressable>
                 ) : (
@@ -1392,18 +1623,38 @@ export const WorkoutModal: React.FC = () => {
                           key={`circuit-round-${roundIdx}`}
                           style={[
                             styles.circuitRoundContainer,
-                            isCurrentRound && styles.circuitRoundActive,
+                            isCurrentRound && (isInterval ? styles.circuitRoundActiveInterval : styles.circuitRoundActive),
                             roundCompleted && styles.circuitRoundCompleted,
                           ]}
                         >
                           <View style={styles.roundHeaderRow}>
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                              <Text style={[styles.roundTitle, { color: '#eab308' }]}>
+                              <Text
+                                style={[
+                                  styles.roundTitle,
+                                  { color: isInterval ? '#EF4444' : '#eab308' },
+                                ]}
+                              >
                                 GIRO {roundNumber} DI {totalRounds}
                               </Text>
                               {isCurrentRound && (
-                                <View style={styles.currentRoundBadge}>
-                                  <Text style={styles.currentRoundBadgeText}>IN CORSO</Text>
+                                <View
+                                  style={[
+                                    styles.currentRoundBadge,
+                                    isInterval && {
+                                      backgroundColor: 'rgba(239, 68, 68, 0.2)',
+                                      borderColor: '#EF4444',
+                                    },
+                                  ]}
+                                >
+                                  <Text
+                                    style={[
+                                      styles.currentRoundBadgeText,
+                                      isInterval && { color: '#EF4444' },
+                                    ]}
+                                  >
+                                    IN CORSO
+                                  </Text>
                                 </View>
                               )}
                             </View>
@@ -1419,10 +1670,14 @@ export const WorkoutModal: React.FC = () => {
                             const set = ex.sets[roundIdx];
                             if (!set) return null;
                             const isLastExInRound = exInGroupIdx === groupExs.length - 1;
-                            const isTimeSet = (ex.exerciseType === 'time') || Boolean(
-                              (set.targetTimeSeconds && set.targetTimeSeconds > 0 && (!set.targetReps || set.targetReps === 0)) ||
-                              (set.time_seconds && set.time_seconds > 0 && (!set.reps || set.reps === 0))
-                            );
+                            const isTimeSet =
+                              !isInterval && (
+                                ex.exerciseType === 'time' ||
+                                Boolean(
+                                  (set.targetTimeSeconds != null && Number(set.targetTimeSeconds) > 0) ||
+                                  (set.time_seconds != null && Number(set.time_seconds) > 0)
+                                )
+                              );
 
                             return (
                               <React.Fragment key={`circuit-frag-${ex.exerciseId}-r-${roundIdx}`}>
@@ -1466,7 +1721,7 @@ export const WorkoutModal: React.FC = () => {
                                   {/* Target vs Previous Badge */}
                                   <View style={styles.targetVsPrevRow}>
                                     <Text style={styles.targetVsPrevBadgeTarget}>
-                                      🎯 {getTargetSetSummary(set, ex.exerciseType)}
+                                      🎯 {getTargetSetSummary(set, ex.exerciseType, isInterval)}
                                     </Text>
                                     <Text style={styles.targetVsPrevBadgePrev}>
                                       📈 {getPreviousSetSummary(ex.exerciseId, roundIdx, ex.exerciseType)}
@@ -1479,83 +1734,111 @@ export const WorkoutModal: React.FC = () => {
                                     <View style={styles.stackedControlsCol}>
                                       {/* Riga Superiore: Controlli Principali (Input) */}
                                       <View style={styles.stackedInputsRow}>
-                                        {!isTimeSet && ex.exerciseType === 'reps' && (
-                                          <>
-                                            <View style={[styles.cellInputWrapper, set.completed && styles.cellInputWrapperCompleted]}>
-                                              <TextInput
-                                                style={[styles.cellTextInput, set.completed && styles.cellTextInputCompleted]}
-                                                keyboardType="decimal-pad"
-                                                editable={!set.completed}
-                                                value={set.weight_kg === 0 ? '' : String(set.weight_kg)}
-                                                onChangeText={(val) => handleUpdateWeight(globalExIdx, roundIdx, val)}
-                                                placeholder="0"
-                                                placeholderTextColor={colors.textMuted}
+                                        {isInterval ? (
+                                          ex.exerciseType === 'bodyweight' ? (
+                                            <>
+                                              <BandSelectDropdown
+                                                compact
+                                                disabled={false}
+                                                value={set.band_assistance || 'none'}
+                                                onChange={(val) => {
+                                                  const up = [...liveExercises];
+                                                  up[globalExIdx].sets[roundIdx].band_assistance = val;
+                                                  setLiveExercises(up);
+                                                }}
+                                                style={styles.bandDropdownCompact}
                                               />
-                                              <Text style={styles.cellInputUnit}>kg</Text>
-                                            </View>
 
-                                            <View style={[styles.cellInputWrapper, set.completed && styles.cellInputWrapperCompleted]}>
-                                              <TextInput
-                                                style={[styles.cellTextInput, set.completed && styles.cellTextInputCompleted]}
-                                                keyboardType="numeric"
-                                                editable={!set.completed}
-                                                value={set.reps === 0 ? '' : String(set.reps)}
-                                                onChangeText={(val) => handleUpdateReps(globalExIdx, roundIdx, val)}
-                                                placeholder="0"
-                                                placeholderTextColor={colors.textMuted}
-                                              />
-                                              <Text style={styles.cellInputUnit}>reps</Text>
-                                            </View>
-                                          </>
-                                        )}
+                                              {set.band_assistance === 'weighted' && (
+                                                <View style={[styles.cellInputWrapper, styles.cellInputWrapperWeighted, set.completed && styles.cellInputWrapperCompleted]}>
+                                                  <TextInput
+                                                    style={[styles.cellTextInput, set.completed && styles.cellTextInputCompleted]}
+                                                    keyboardType="decimal-pad"
+                                                    editable={true}
+                                                    value={set.weight_kg === 0 ? '' : String(set.weight_kg)}
+                                                    onChangeText={(val) => handleUpdateWeight(globalExIdx, roundIdx, val)}
+                                                    placeholder="+0"
+                                                    placeholderTextColor={colors.textMuted}
+                                                  />
+                                                  <Text style={styles.cellInputUnit}>+kg</Text>
+                                                </View>
+                                              )}
 
-                                        {!isTimeSet && ex.exerciseType === 'bodyweight' && (
-                                          <>
-                                            <BandSelectDropdown
-                                              compact
-                                              disabled={set.completed}
-                                              value={set.band_assistance || 'none'}
-                                              onChange={(val) => {
-                                                const up = [...liveExercises];
-                                                up[globalExIdx].sets[roundIdx].band_assistance = val;
-                                                setLiveExercises(up);
-                                              }}
-                                              style={styles.bandDropdownCompact}
-                                            />
-
-                                            {set.band_assistance === 'weighted' && (
-                                              <View style={[styles.cellInputWrapper, styles.cellInputWrapperWeighted, set.completed && styles.cellInputWrapperCompleted]}>
+                                              <View style={[styles.cellInputWrapper, set.completed && styles.cellInputWrapperCompleted]}>
+                                                <TextInput
+                                                  style={[styles.cellTextInput, set.completed && styles.cellTextInputCompleted]}
+                                                  keyboardType="numeric"
+                                                  editable={true}
+                                                  value={set.reps === 0 ? '' : String(set.reps)}
+                                                  onChangeText={(val) => handleUpdateReps(globalExIdx, roundIdx, val)}
+                                                  placeholder="0"
+                                                  placeholderTextColor={colors.textMuted}
+                                                />
+                                                <Text style={styles.cellInputUnit}>reps</Text>
+                                              </View>
+                                            </>
+                                          ) : (
+                                            <>
+                                              <View style={[styles.cellInputWrapper, set.completed && styles.cellInputWrapperCompleted]}>
                                                 <TextInput
                                                   style={[styles.cellTextInput, set.completed && styles.cellTextInputCompleted]}
                                                   keyboardType="decimal-pad"
-                                                  editable={!set.completed}
+                                                  editable={true}
                                                   value={set.weight_kg === 0 ? '' : String(set.weight_kg)}
                                                   onChangeText={(val) => handleUpdateWeight(globalExIdx, roundIdx, val)}
-                                                  placeholder="+0"
+                                                  placeholder="0"
                                                   placeholderTextColor={colors.textMuted}
                                                 />
-                                                <Text style={styles.cellInputUnit}>+kg</Text>
+                                                <Text style={styles.cellInputUnit}>kg</Text>
                                               </View>
+
+                                              <View style={[styles.cellInputWrapper, set.completed && styles.cellInputWrapperCompleted]}>
+                                                <TextInput
+                                                  style={[styles.cellTextInput, set.completed && styles.cellTextInputCompleted]}
+                                                  keyboardType="numeric"
+                                                  editable={true}
+                                                  value={set.reps === 0 ? '' : String(set.reps)}
+                                                  onChangeText={(val) => handleUpdateReps(globalExIdx, roundIdx, val)}
+                                                  placeholder="0"
+                                                  placeholderTextColor={colors.textMuted}
+                                                />
+                                                <Text style={styles.cellInputUnit}>reps</Text>
+                                              </View>
+                                            </>
+                                          )
+                                        ) : (
+                                          <>
+                                            {!isTimeSet && ex.exerciseType === 'reps' && (
+                                              <>
+                                                <View style={[styles.cellInputWrapper, set.completed && styles.cellInputWrapperCompleted]}>
+                                                  <TextInput
+                                                    style={[styles.cellTextInput, set.completed && styles.cellTextInputCompleted]}
+                                                    keyboardType="decimal-pad"
+                                                    editable={!set.completed}
+                                                    value={set.weight_kg === 0 ? '' : String(set.weight_kg)}
+                                                    onChangeText={(val) => handleUpdateWeight(globalExIdx, roundIdx, val)}
+                                                    placeholder="0"
+                                                    placeholderTextColor={colors.textMuted}
+                                                  />
+                                                  <Text style={styles.cellInputUnit}>kg</Text>
+                                                </View>
+
+                                                <View style={[styles.cellInputWrapper, set.completed && styles.cellInputWrapperCompleted]}>
+                                                  <TextInput
+                                                    style={[styles.cellTextInput, set.completed && styles.cellTextInputCompleted]}
+                                                    keyboardType="numeric"
+                                                    editable={!set.completed}
+                                                    value={set.reps === 0 ? '' : String(set.reps)}
+                                                    onChangeText={(val) => handleUpdateReps(globalExIdx, roundIdx, val)}
+                                                    placeholder="0"
+                                                    placeholderTextColor={colors.textMuted}
+                                                  />
+                                                  <Text style={styles.cellInputUnit}>reps</Text>
+                                                </View>
+                                              </>
                                             )}
 
-                                            <View style={[styles.cellInputWrapper, set.completed && styles.cellInputWrapperCompleted]}>
-                                              <TextInput
-                                                style={[styles.cellTextInput, set.completed && styles.cellTextInputCompleted]}
-                                                keyboardType="numeric"
-                                                editable={!set.completed}
-                                                value={set.reps === 0 ? '' : String(set.reps)}
-                                                onChangeText={(val) => handleUpdateReps(globalExIdx, roundIdx, val)}
-                                                placeholder="0"
-                                                placeholderTextColor={colors.textMuted}
-                                              />
-                                              <Text style={styles.cellInputUnit}>reps</Text>
-                                            </View>
-                                          </>
-                                        )}
-
-                                        {isTimeSet && (
-                                          <>
-                                            {ex.exerciseType === 'bodyweight' && (
+                                            {!isTimeSet && ex.exerciseType === 'bodyweight' && (
                                               <>
                                                 <BandSelectDropdown
                                                   compact
@@ -1568,6 +1851,7 @@ export const WorkoutModal: React.FC = () => {
                                                   }}
                                                   style={styles.bandDropdownCompact}
                                                 />
+
                                                 {set.band_assistance === 'weighted' && (
                                                   <View style={[styles.cellInputWrapper, styles.cellInputWrapperWeighted, set.completed && styles.cellInputWrapperCompleted]}>
                                                     <TextInput
@@ -1582,66 +1866,113 @@ export const WorkoutModal: React.FC = () => {
                                                     <Text style={styles.cellInputUnit}>+kg</Text>
                                                   </View>
                                                 )}
+
+                                                <View style={[styles.cellInputWrapper, set.completed && styles.cellInputWrapperCompleted]}>
+                                                  <TextInput
+                                                    style={[styles.cellTextInput, set.completed && styles.cellTextInputCompleted]}
+                                                    keyboardType="numeric"
+                                                    editable={!set.completed}
+                                                    value={set.reps === 0 ? '' : String(set.reps)}
+                                                    onChangeText={(val) => handleUpdateReps(globalExIdx, roundIdx, val)}
+                                                    placeholder="0"
+                                                    placeholderTextColor={colors.textMuted}
+                                                  />
+                                                  <Text style={styles.cellInputUnit}>reps</Text>
+                                                </View>
                                               </>
                                             )}
-                                            {ex.exerciseType === 'reps' && (
-                                              <View style={[styles.cellInputWrapper, set.completed && styles.cellInputWrapperCompleted]}>
-                                                <TextInput
-                                                  style={[styles.cellTextInput, set.completed && styles.cellTextInputCompleted]}
-                                                  keyboardType="decimal-pad"
-                                                  editable={!set.completed}
-                                                  value={set.weight_kg === 0 ? '' : String(set.weight_kg)}
-                                                  onChangeText={(val) => handleUpdateWeight(globalExIdx, roundIdx, val)}
-                                                  placeholder="0"
-                                                  placeholderTextColor={colors.textMuted}
-                                                />
-                                                <Text style={styles.cellInputUnit}>kg</Text>
-                                              </View>
+
+                                            {isTimeSet && (
+                                              <>
+                                                {ex.exerciseType === 'bodyweight' && (
+                                                  <>
+                                                    <BandSelectDropdown
+                                                      compact
+                                                      disabled={set.completed}
+                                                      value={set.band_assistance || 'none'}
+                                                      onChange={(val) => {
+                                                        const up = [...liveExercises];
+                                                        up[globalExIdx].sets[roundIdx].band_assistance = val;
+                                                        setLiveExercises(up);
+                                                      }}
+                                                      style={styles.bandDropdownCompact}
+                                                    />
+                                                    {set.band_assistance === 'weighted' && (
+                                                      <View style={[styles.cellInputWrapper, styles.cellInputWrapperWeighted, set.completed && styles.cellInputWrapperCompleted]}>
+                                                        <TextInput
+                                                          style={[styles.cellTextInput, set.completed && styles.cellTextInputCompleted]}
+                                                          keyboardType="decimal-pad"
+                                                          editable={!set.completed}
+                                                          value={set.weight_kg === 0 ? '' : String(set.weight_kg)}
+                                                          onChangeText={(val) => handleUpdateWeight(globalExIdx, roundIdx, val)}
+                                                          placeholder="+0"
+                                                          placeholderTextColor={colors.textMuted}
+                                                        />
+                                                        <Text style={styles.cellInputUnit}>+kg</Text>
+                                                      </View>
+                                                    )}
+                                                  </>
+                                                )}
+                                                {ex.exerciseType === 'reps' && (
+                                                  <View style={[styles.cellInputWrapper, set.completed && styles.cellInputWrapperCompleted]}>
+                                                    <TextInput
+                                                      style={[styles.cellTextInput, set.completed && styles.cellTextInputCompleted]}
+                                                      keyboardType="decimal-pad"
+                                                      editable={!set.completed}
+                                                      value={set.weight_kg === 0 ? '' : String(set.weight_kg)}
+                                                      onChangeText={(val) => handleUpdateWeight(globalExIdx, roundIdx, val)}
+                                                      placeholder="0"
+                                                      placeholderTextColor={colors.textMuted}
+                                                    />
+                                                    <Text style={styles.cellInputUnit}>kg</Text>
+                                                  </View>
+                                                )}
+                                                <View style={styles.timeStepperRow}>
+                                                  <Pressable
+                                                    onPress={() => {
+                                                      const cur = set.time_seconds ?? set.targetTimeSeconds ?? 60;
+                                                      handleUpdateTimeSeconds(globalExIdx, roundIdx, String(Math.max(0, cur - 5)));
+                                                    }}
+                                                    style={styles.stepBtnCompact}
+                                                    accessibilityRole="button"
+                                                    accessibilityLabel="-5 secondi"
+                                                  >
+                                                    <Text style={styles.stepBtnCompactText}>-5s</Text>
+                                                  </Pressable>
+
+                                                  <View style={[styles.timeInputWrapper, set.completed && styles.cellInputWrapperCompleted]}>
+                                                    <TextInput
+                                                      style={[styles.cellTextInput, set.completed && styles.cellTextInputCompleted]}
+                                                      keyboardType="numeric"
+                                                      editable={!set.completed}
+                                                      value={set.time_seconds === 0 ? '' : String(set.time_seconds ?? set.targetTimeSeconds ?? '')}
+                                                      onChangeText={(val) => handleUpdateTimeSeconds(globalExIdx, roundIdx, val)}
+                                                      placeholder="0"
+                                                      placeholderTextColor={colors.textMuted}
+                                                    />
+                                                    <Text style={styles.cellInputUnit}>s</Text>
+                                                  </View>
+
+                                                  <Pressable
+                                                    onPress={() => {
+                                                      const cur = set.time_seconds ?? set.targetTimeSeconds ?? 60;
+                                                      handleUpdateTimeSeconds(globalExIdx, roundIdx, String(cur + 5));
+                                                    }}
+                                                    style={styles.stepBtnCompact}
+                                                    accessibilityRole="button"
+                                                    accessibilityLabel="+5 secondi"
+                                                  >
+                                                    <Text style={styles.stepBtnCompactText}>+5s</Text>
+                                                  </Pressable>
+                                                </View>
+                                              </>
                                             )}
-                                            <View style={styles.timeStepperRow}>
-                                              <Pressable
-                                                onPress={() => {
-                                                  const cur = set.time_seconds ?? set.targetTimeSeconds ?? 60;
-                                                  handleUpdateTimeSeconds(globalExIdx, roundIdx, String(Math.max(0, cur - 5)));
-                                                }}
-                                                style={styles.stepBtnCompact}
-                                                accessibilityRole="button"
-                                                accessibilityLabel="-5 secondi"
-                                              >
-                                                <Text style={styles.stepBtnCompactText}>-5s</Text>
-                                              </Pressable>
-
-                                              <View style={[styles.timeInputWrapper, set.completed && styles.cellInputWrapperCompleted]}>
-                                                <TextInput
-                                                  style={[styles.cellTextInput, set.completed && styles.cellTextInputCompleted]}
-                                                  keyboardType="numeric"
-                                                  editable={!set.completed}
-                                                  value={set.time_seconds === 0 ? '' : String(set.time_seconds ?? set.targetTimeSeconds ?? '')}
-                                                  onChangeText={(val) => handleUpdateTimeSeconds(globalExIdx, roundIdx, val)}
-                                                  placeholder="0"
-                                                  placeholderTextColor={colors.textMuted}
-                                                />
-                                                <Text style={styles.cellInputUnit}>s</Text>
-                                              </View>
-
-                                              <Pressable
-                                                onPress={() => {
-                                                  const cur = set.time_seconds ?? set.targetTimeSeconds ?? 60;
-                                                  handleUpdateTimeSeconds(globalExIdx, roundIdx, String(cur + 5));
-                                                }}
-                                                style={styles.stepBtnCompact}
-                                                accessibilityRole="button"
-                                                accessibilityLabel="+5 secondi"
-                                              >
-                                                <Text style={styles.stepBtnCompactText}>+5s</Text>
-                                              </Pressable>
-                                            </View>
                                           </>
                                         )}
                                       </View>
 
                                       {/* Riga Inferiore: Blocco Azioni (Timer Lavoro e/o Intra-Rest) */}
-                                      {(isTimeSet || (!isLastExInRound && (ex.intraRestSeconds || 0) > 0)) && (
+                                      {!isInterval && (isTimeSet || (!isLastExInRound && (ex.intraRestSeconds || 0) > 0)) && (
                                         <View style={styles.stackedActionsRow}>
                                           {isTimeSet && (
                                             <Pressable
@@ -1719,30 +2050,30 @@ export const WorkoutModal: React.FC = () => {
                           {/* Round End Rest Action Row */}
                           {roundIdx + 1 < totalRounds && (
                             <View style={styles.circuitRecoveryRow}>
-                              <View style={{ flex: 1 }}>
-                                <Text style={[styles.recLabel, { color: '#eab308' }]}>
-                                  RECUPERO FINE GIRO {roundNumber}
-                                </Text>
-                                <Text style={styles.recTargetText}>
-                                  ⏱️ {section.restBetweenRounds}s • Giro {roundNumber + 1}
-                                </Text>
-                              </View>
-
                               <Pressable
                                 onPress={() =>
                                   handleOpenCircuitRoundEndTimer(
                                     roundNumber,
                                     totalRounds,
-                                    section.restBetweenRounds ?? 60,
+                                    section.restBetweenRounds ?? (isInterval ? 30 : 60),
                                     groupExs[0].ex.name
                                   )
                                 }
-                                style={[styles.actionTimerBtn, { backgroundColor: '#eab308' }]}
+                                style={[
+                                  styles.unifiedTimerBar,
+                                  isInterval && styles.unifiedTimerBarInterval,
+                                ]}
                                 accessibilityRole="button"
-                                accessibilityLabel={`Avvia recupero fine giro di ${section.restBetweenRounds} secondi`}
+                                accessibilityLabel={`Avvia recupero fine giro di ${section.restBetweenRounds ?? (isInterval ? 30 : 60)} secondi`}
                               >
-                                <Text style={[styles.actionTimerBtnText, { color: '#0F172A' }]}>
-                                  ⏱ {section.restBetweenRounds}s REC. GIRO
+                                <Text
+                                  style={[
+                                    styles.unifiedTimerBarText,
+                                    isInterval && styles.unifiedTimerBarTextInterval,
+                                  ]}
+                                  numberOfLines={1}
+                                >
+                                  ⏱️ RECUPERO FINE GIRO {roundNumber} ({section.restBetweenRounds ?? (isInterval ? 30 : 60)}s)
                                 </Text>
                               </Pressable>
                             </View>
@@ -1768,7 +2099,7 @@ export const WorkoutModal: React.FC = () => {
               <Card key={`ss-section-${section.supersetGroup}-${secIdx}`} style={styles.supersetSectionCard}>
                 {/* Superset Block Header */}
                 <View style={styles.supersetBlockHeader}>
-                  <View style={{ flex: 1 }}>
+                  <View style={{ flex: 1, marginRight: 8 }}>
                     <View style={styles.supersetTagBadge}>
                       <Text style={styles.supersetTagBadgeText}>
                         ⚡ SUPER SERIE {section.supersetGroup}
@@ -1834,10 +2165,12 @@ export const WorkoutModal: React.FC = () => {
                             if (!set) return null;
                             const bStyle = getBadgeStyle(set.set_type);
                             const isLastExInGroup = exInGroupIdx === groupExs.length - 1;
-                            const isTimeSet = (ex.exerciseType === 'time') || Boolean(
-                              (set.targetTimeSeconds && set.targetTimeSeconds > 0 && (!set.targetReps || set.targetReps === 0)) ||
-                              (set.time_seconds && set.time_seconds > 0 && (!set.reps || set.reps === 0))
-                            );
+                            const isTimeSet =
+                              ex.exerciseType === 'time' ||
+                              Boolean(
+                                (set.targetTimeSeconds != null && Number(set.targetTimeSeconds) > 0) ||
+                                (set.time_seconds != null && Number(set.time_seconds) > 0)
+                              );
 
                             return (
                               <React.Fragment key={`ss-frag-${ex.exerciseId}-s-${roundIdx}`}>
@@ -2097,13 +2430,6 @@ export const WorkoutModal: React.FC = () => {
 
                           {/* Post-Superset Recovery Row with Fullscreen Timer Overlay Trigger */}
                           <View style={styles.supersetRecoveryRow}>
-                            <View style={{ flex: 1 }}>
-                              <Text style={styles.recLabel}>RECUPERO SUPER SERIE</Text>
-                              <Text style={styles.recTargetText}>
-                                ⏱️ {groupExs[0].ex.restSeconds}s
-                              </Text>
-                            </View>
-
                             <Pressable
                               onPress={() =>
                                 handleOpenRestTimerForSupersetRound(
@@ -2112,12 +2438,12 @@ export const WorkoutModal: React.FC = () => {
                                   section.exerciseIndices
                                 )
                               }
-                              style={styles.actionTimerBtn}
+                              style={styles.unifiedTimerBar}
                               accessibilityRole="button"
                               accessibilityLabel={`Avvia recupero super serie di ${groupExs[0].ex.restSeconds || 90} secondi`}
                             >
-                              <Text style={styles.actionTimerBtnText}>
-                                ⏱ {groupExs[0].ex.restSeconds || 90}s REC.
+                              <Text style={styles.unifiedTimerBarText} numberOfLines={1}>
+                                ⏱️ RECUPERO SUPER SERIE ({groupExs[0].ex.restSeconds || 90}s)
                               </Text>
                             </Pressable>
                           </View>
@@ -2217,7 +2543,13 @@ export const WorkoutModal: React.FC = () => {
                   <View style={styles.tableHeaderRow}>
                     <Text style={[styles.colHeader, { width: 44, textAlign: 'center', marginRight: 8 }]}>SET</Text>
                     <Text style={[styles.colHeader, { flex: 1, textAlign: 'center' }]}>
-                      {exercise.exerciseType === 'time'
+                      {exercise.exerciseType === 'time' ||
+                      exercise.sets.some((s) =>
+                        Boolean(
+                          (s.targetTimeSeconds != null && Number(s.targetTimeSeconds) > 0) ||
+                          (s.time_seconds != null && Number(s.time_seconds) > 0)
+                        )
+                      )
                         ? 'OBIETTIVO & LAVORO'
                         : 'CARICO & RIPETIZIONI'}
                     </Text>
@@ -2417,10 +2749,12 @@ export const WorkoutModal: React.FC = () => {
                       );
                     }
 
-                    const isTimeSet = (exercise.exerciseType === 'time') || Boolean(
-                      (set.targetTimeSeconds && set.targetTimeSeconds > 0 && (!set.targetReps || set.targetReps === 0)) ||
-                      (set.time_seconds && set.time_seconds > 0 && (!set.reps || set.reps === 0))
-                    );
+                    const isTimeSet =
+                      exercise.exerciseType === 'time' ||
+                      Boolean(
+                        (set.targetTimeSeconds != null && Number(set.targetTimeSeconds) > 0) ||
+                        (set.time_seconds != null && Number(set.time_seconds) > 0)
+                      );
 
                     return (
                       <View
@@ -2912,6 +3246,16 @@ const styles = StyleSheet.create({
     borderLeftWidth: 4,
     borderLeftColor: '#eab308',
   },
+  circuitSectionCardStandard: {
+    borderLeftWidth: 5,
+    borderLeftColor: '#F59E0B',
+    borderColor: 'rgba(245, 158, 11, 0.4)',
+  },
+  circuitSectionCardInterval: {
+    borderLeftWidth: 5,
+    borderLeftColor: '#EF4444',
+    borderColor: 'rgba(239, 68, 68, 0.4)',
+  },
   circuitBlockHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -2934,6 +3278,41 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 0.5,
   },
+  circuitTagBadgeStandard: {
+    backgroundColor: 'rgba(234, 179, 8, 0.15)',
+    borderColor: 'rgba(234, 179, 8, 0.4)',
+  },
+  circuitTagBadgeTextStandard: {
+    color: '#eab308',
+  },
+  circuitTagBadgeInterval: {
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    borderColor: 'rgba(239, 68, 68, 0.4)',
+  },
+  circuitTagBadgeTextInterval: {
+    color: '#EF4444',
+  },
+  startHandsFreeBtn: {
+    backgroundColor: '#EF4444',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: layout.borderRadiusMd,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 6,
+    marginBottom: 12,
+    shadowColor: '#EF4444',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.35,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  startHandsFreeBtnText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+  },
   circuitRoundContainer: {
     backgroundColor: 'rgba(255, 255, 255, 0.02)',
     borderRadius: layout.borderRadiusMd,
@@ -2945,6 +3324,10 @@ const styles = StyleSheet.create({
   circuitRoundActive: {
     borderColor: 'rgba(234, 179, 8, 0.5)',
     backgroundColor: 'rgba(234, 179, 8, 0.03)',
+  },
+  circuitRoundActiveInterval: {
+    borderColor: 'rgba(239, 68, 68, 0.5)',
+    backgroundColor: 'rgba(239, 68, 68, 0.03)',
   },
   circuitRoundCompleted: {
     backgroundColor: 'rgba(16, 185, 129, 0.06)',
@@ -3069,9 +3452,6 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   circuitRecoveryRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
     marginTop: 8,
     paddingTop: 8,
     borderTopWidth: 1,
@@ -3084,6 +3464,9 @@ const styles = StyleSheet.create({
     borderLeftColor: colors.accent,
   },
   supersetBlockHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
     marginBottom: 12,
   },
   supersetTagBadge: {
@@ -3174,13 +3557,35 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   supersetRecoveryRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: 6,
+    marginTop: 8,
     paddingTop: 8,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(51, 65, 85, 0.3)',
+    borderTopColor: 'rgba(234, 179, 8, 0.3)',
+  },
+  unifiedTimerBar: {
+    width: '100%',
+    height: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(234, 179, 8, 0.15)',
+    borderWidth: 1.5,
+    borderColor: '#eab308',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+  },
+  unifiedTimerBarText: {
+    color: '#eab308',
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+  },
+  unifiedTimerBarInterval: {
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    borderColor: '#EF4444',
+  },
+  unifiedTimerBarTextInterval: {
+    color: '#EF4444',
   },
   recLabel: {
     fontSize: 10,

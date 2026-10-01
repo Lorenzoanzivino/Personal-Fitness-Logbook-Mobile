@@ -211,7 +211,6 @@ export const ClientsScreen: React.FC = () => {
 
   // Hard delete confirmation with cross-platform support
   const handleHardDeleteConfirm = (client: ProvisionedClient) => {
-    console.log('[ClientsScreen] Click Elimina su client:', client.id);
     const clientName = `${client.first_name} ${client.last_name}`.trim() || client.username;
 
     const executeDelete = async () => {
@@ -516,7 +515,6 @@ export const ClientsScreen: React.FC = () => {
 
                       <Pressable
                         onPress={() => {
-                          console.log('[ClientsScreen] Click Elimina su client:', client.id);
                           handleHardDeleteConfirm(client);
                         }}
                         style={({ pressed }) => [

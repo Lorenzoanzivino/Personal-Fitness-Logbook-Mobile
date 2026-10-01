@@ -82,13 +82,27 @@ export class ProfileService {
       }
     }
 
+    let birthDateToSet: string | undefined = undefined;
+    if (dto.birth_date !== undefined && dto.birth_date.trim() !== '') {
+      const trimmed = dto.birth_date.trim();
+      const dmy = trimmed.match(/^(\d{1,2})\s*[-/.]\s*(\d{1,2})\s*[-/.]\s*(\d{4})/);
+      const ymd = trimmed.match(/^(\d{4})\s*[-/.]\s*(\d{1,2})\s*[-/.]\s*(\d{1,2})/);
+      if (dmy) {
+        birthDateToSet = `${dmy[1].padStart(2, '0')}-${dmy[2].padStart(2, '0')}-${dmy[3]}`;
+      } else if (ymd) {
+        birthDateToSet = `${ymd[3].padStart(2, '0')}-${ymd[2].padStart(2, '0')}-${ymd[1]}`;
+      } else {
+        birthDateToSet = trimmed;
+      }
+    }
+
     await db
       .update(users)
       .set({
         username: usernameToSet !== undefined ? usernameToSet : undefined,
         firstName: dto.first_name !== undefined ? dto.first_name : undefined,
         lastName: dto.last_name !== undefined ? dto.last_name : undefined,
-        birthDate: dto.birth_date !== undefined ? dto.birth_date : undefined,
+        birthDate: birthDateToSet !== undefined ? birthDateToSet : undefined,
         heightCm: dto.height_cm ? String(dto.height_cm) : undefined,
         avatarUrl: dto.avatar_url !== undefined ? dto.avatar_url : undefined,
         email: dto.email !== undefined ? dto.email : undefined,

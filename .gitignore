@@ -34,6 +34,9 @@ web-build/
 backend/dist/
 build/
 bin/
+*.apk
+*.aab
+*.tar.gz
 /ios
 /android
 .kotlin/

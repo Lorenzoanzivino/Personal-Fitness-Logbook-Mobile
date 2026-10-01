@@ -16,7 +16,7 @@ import { Card } from '../components/Card';
 import { Avatar } from '../components/Avatar';
 import { CustomConfirmModal } from '../components/CustomConfirmModal';
 import { ScreenBackgroundWrapper } from '../components/ScreenBackgroundWrapper';
-import { DatePickerInput } from '../components/DatePickerInput';
+import { DatePickerInput, normalizeToDDMMYYYY } from '../components/DatePickerInput';
 import { profileService } from '../services/profileService';
 import { TRAINER_CONFIG } from '../services/config';
 import { UserProfile, UserRole } from '../types/profile';
@@ -129,7 +129,8 @@ export const ProfileScreen: React.FC = () => {
     setUsername(data.username || user?.username || '');
     setFirstName(data.first_name || user?.first_name || '');
     setLastName(data.last_name || user?.last_name || '');
-    setBirthDate(data.birth_date || user?.birth_date || '');
+    const cleanDate = normalizeToDDMMYYYY(data.birth_date || user?.birth_date || '01-01-1995');
+    setBirthDate(cleanDate);
     setHeightCm(data.height_cm ? String(data.height_cm) : user?.height_cm ? String(user.height_cm) : '');
     setAvatarUri(data.avatar_url || user?.avatar_url || null);
   };
@@ -159,8 +160,13 @@ export const ProfileScreen: React.FC = () => {
       return false;
     }
 
+    const cleanDate = normalizeToDDMMYYYY(birthDate);
+    if (cleanDate !== birthDate) {
+      setBirthDate(cleanDate);
+    }
+
     const dateRegex = /^(\d{2})-(\d{2})-(\d{4})$/;
-    const match = birthDate.trim().match(dateRegex);
+    const match = cleanDate.match(dateRegex);
     if (!match) {
       setFeedback({
         type: 'error',
@@ -212,7 +218,7 @@ export const ProfileScreen: React.FC = () => {
         username: cleanUsername,
         first_name: firstName.trim(),
         last_name: lastName.trim(),
-        birth_date: birthDate.trim(),
+        birth_date: normalizeToDDMMYYYY(birthDate),
         height_cm: numHeight,
         avatar_url: avatarUri,
         role: currentRole,
@@ -275,7 +281,7 @@ export const ProfileScreen: React.FC = () => {
         username: cleanUsername || user?.username || profile?.username,
         first_name: firstName.trim() || profile?.first_name || 'Utente',
         last_name: lastName.trim() || profile?.last_name || '',
-        birth_date: birthDate.trim() || profile?.birth_date || '01-01-2000',
+        birth_date: normalizeToDDMMYYYY(birthDate || profile?.birth_date || '01-01-2000'),
         height_cm: numHeight,
         avatar_url: newUri,
         role: currentRole,

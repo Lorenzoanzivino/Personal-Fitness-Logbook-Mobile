@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,8 @@ import {
   Pressable,
   ActivityIndicator,
   Modal,
+  Alert,
+  Keyboard,
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -26,7 +28,6 @@ import { colors } from '../../theme/colors';
 import { layout } from '../../theme/spacing';
 import { typography } from '../../theme/typography';
 import { Card } from '../../components/Card';
-import { CustomConfirmModal } from '../../components/CustomConfirmModal';
 import { ToastFeedback, ToastType } from '../../components/ToastFeedback';
 import { YouTubeModalOverlay } from '../../components/YouTubeModalOverlay';
 import { BandSelectDropdown } from '../../components/BandSelectDropdown';
@@ -241,7 +242,7 @@ export const NewRoutineModal: React.FC = () => {
   const navigation = useNavigation<RootStackNavigationProp>();
   const route = useRoute<NewRoutineModalRouteProp>();
   const insets = useSafeAreaInsets();
-  const { provisionedClients } = useAuth();
+  const { provisionedClients, user: authUser } = useAuth();
   const {
     exercises,
     routines,
@@ -259,6 +260,16 @@ export const NewRoutineModal: React.FC = () => {
   const isEditing = Boolean(routineId);
   const existingRoutine = isEditing ? routines.find((r) => r.id === routineId) : null;
 
+  const isTrainer = userRole === 'TRAINER' || userProfile?.role === 'TRAINER' || authUser?.role === 'TRAINER';
+  const trainerId = String(authUser?.id || userProfile?.id || 'trainer-1');
+  const trainerFullName = [
+    authUser?.first_name || userProfile?.first_name,
+    authUser?.last_name || userProfile?.last_name,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .trim() || authUser?.username || userProfile?.username || 'Trainer';
+
   // Header State
   const [name, setName] = useState('');
   const [durationWeeks, setDurationWeeks] = useState('8');
@@ -269,29 +280,68 @@ export const NewRoutineModal: React.FC = () => {
   );
   const [selectedBorderColor, setSelectedBorderColor] = useState<string>(BORDER_PALETTE[0]);
 
-  // Available Clients: Merge provisionedClients and userProfile.clients
+  // Available Clients: Prepend Trainer, then non-archived clients
   const availableClients = useMemo(() => {
-    const map = new Map<string, { id: string | number; name: string }>();
+    const list: { id: string | number; name: string; isTrainer?: boolean }[] = [];
+    const addedIds = new Set<string>();
+
+    if (isTrainer) {
+      list.push({
+        id: trainerId,
+        name: `🏋️ ${trainerFullName} (Trainer)`,
+        isTrainer: true,
+      });
+      addedIds.add(trainerId);
+      addedIds.add('trainer-1');
+      addedIds.add('trainer-marco-1');
+    }
+
     if (Array.isArray(provisionedClients)) {
       provisionedClients.forEach((c: any) => {
-        if (!c.is_archived && c.id) {
-          map.set(String(c.id), { id: c.id, name: c.name || c.email || `Atleta #${c.id}` });
+        const isArchived = Boolean(c.isArchived ?? c.is_archived);
+        const strId = String(c.id);
+        if (!isArchived && c.id && !addedIds.has(strId)) {
+          addedIds.add(strId);
+          const fullName = [c.first_name || c.firstName, c.last_name || c.lastName]
+            .filter(Boolean)
+            .join(' ')
+            .trim();
+          const displayName = fullName || c.name || c.username || c.email || `Atleta #${c.id}`;
+          list.push({ id: c.id, name: displayName, isTrainer: false });
         }
       });
     }
+
     if (Array.isArray(userProfile?.clients)) {
       userProfile.clients.forEach((c: any) => {
-        if (!c.is_archived && c.id) {
-          map.set(String(c.id), { id: c.id, name: c.name || c.email || `Atleta #${c.id}` });
+        const isArchived = Boolean(c.isArchived ?? c.is_archived);
+        const strId = String(c.id);
+        if (!isArchived && c.id && !addedIds.has(strId)) {
+          addedIds.add(strId);
+          const fullName = [c.first_name || c.firstName, c.last_name || c.lastName]
+            .filter(Boolean)
+            .join(' ')
+            .trim();
+          const displayName = fullName || c.name || c.username || c.email || `Atleta #${c.id}`;
+          list.push({ id: c.id, name: displayName, isTrainer: false });
         }
       });
     }
-    return Array.from(map.values());
-  }, [provisionedClients, userProfile?.clients]);
+
+    return list;
+  }, [isTrainer, trainerId, trainerFullName, provisionedClients, userProfile?.clients]);
 
   // Multi-Client Assignment (Trainer Mode)
   const [selectedClientIds, setSelectedClientIds] = useState<string[]>(() => {
-    const targetId = route.params?.clientId || (selectedClient?.id !== userProfile?.id ? selectedClient?.id : undefined);
+    if (isEditing && existingRoutine?.owner_id) {
+      const oid = String(existingRoutine.owner_id);
+      return [oid === 'trainer-1' || oid === 'trainer-marco-1' ? trainerId : oid];
+    }
+    const targetId =
+      route.params?.clientId ||
+      (selectedClient?.id && selectedClient.id !== userProfile?.id && selectedClient.id !== authUser?.id
+        ? selectedClient.id
+        : undefined);
     if (targetId) {
       return [String(targetId)];
     }
@@ -330,11 +380,12 @@ export const NewRoutineModal: React.FC = () => {
   // Collapsed block state
   const [collapsedBlocks, setCollapsedBlocks] = useState<Set<string>>(new Set());
 
-  // Delete Routine Confirm Modal
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  // Deletion state
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Saving state & feedback
   const [isSaving, setIsSaving] = useState(false);
+  const isSavingRef = useRef(false);
   const [toast, setToast] = useState<{ visible: boolean; type: ToastType; message: string }>({
     visible: false,
     type: 'info',
@@ -361,7 +412,8 @@ export const NewRoutineModal: React.FC = () => {
         setSelectedBorderColor(existingRoutine.border_color);
       }
       if (existingRoutine.owner_id) {
-        setSelectedClientIds([String(existingRoutine.owner_id)]);
+        const oid = String(existingRoutine.owner_id);
+        setSelectedClientIds([oid === 'trainer-1' || oid === 'trainer-marco-1' ? trainerId : oid]);
       }
 
       const mapLoadedSet = (s: any, idx: number): BuilderSet => {
@@ -850,9 +902,59 @@ export const NewRoutineModal: React.FC = () => {
           ...b,
           exercises: b.exercises.map((ex) => {
             if (ex.tempId !== exTempId) return ex;
-            const updatedSets = ex.sets.map((s, idx) => {
+            const currentSets = ex.sets.length > 0 ? ex.sets : [{
+              setNumber: 1,
+              setType: 'NORMAL' as SetType,
+              targetType: 'time' as TargetType,
+              targetValue: b.intervalWorkSeconds || 40,
+              targetWeightKg: 0,
+              targetReps: 0,
+              targetTimeSeconds: b.intervalWorkSeconds || 40,
+              equipment: 'bodyweight' as EquipmentType,
+              bandAssistance: 'none' as BandAssistance,
+              bandIntensity: 'medium' as BandIntensity,
+              restSeconds: b.intervalRestSeconds || 20,
+            }];
+            const updatedSets = currentSets.map((s, idx) => {
               if (idx !== setIndex) return s;
               return { ...s, [field]: value };
+            });
+            return { ...ex, sets: updatedSets };
+          }),
+        };
+      })
+    );
+  };
+
+  const handleUpdateSetFields = (
+    blockTempId: string,
+    exTempId: string,
+    setIndex: number,
+    fields: Partial<BuilderSet>
+  ) => {
+    setBlocks((prev) =>
+      prev.map((b) => {
+        if (b.tempId !== blockTempId) return b;
+        return {
+          ...b,
+          exercises: b.exercises.map((ex) => {
+            if (ex.tempId !== exTempId) return ex;
+            const currentSets = ex.sets.length > 0 ? ex.sets : [{
+              setNumber: 1,
+              setType: 'NORMAL' as SetType,
+              targetType: 'time' as TargetType,
+              targetValue: b.intervalWorkSeconds || 40,
+              targetWeightKg: 0,
+              targetReps: 0,
+              targetTimeSeconds: b.intervalWorkSeconds || 40,
+              equipment: 'bodyweight' as EquipmentType,
+              bandAssistance: 'none' as BandAssistance,
+              bandIntensity: 'medium' as BandIntensity,
+              restSeconds: b.intervalRestSeconds || 20,
+            }];
+            const updatedSets = currentSets.map((s, idx) => {
+              if (idx !== setIndex) return s;
+              return { ...s, ...fields };
             });
             return { ...ex, sets: updatedSets };
           }),
@@ -878,17 +980,26 @@ export const NewRoutineModal: React.FC = () => {
   // Save Routine
   // -------------------------------------------------------------
   const handleSave = async (mode: 'UPDATE' | 'CREATE_NEW' = isEditing ? 'UPDATE' : 'CREATE_NEW') => {
+    // 1. Validazione Sincrona
     if (!name.trim()) {
+      Alert.alert('Attenzione', 'Inserisci il nome della scheda prima di procedere.');
       showToast('error', 'Inserisci il nome della scheda.');
       return;
     }
+    if (isTrainer && selectedClientIds.length === 0) {
+      Alert.alert('Attenzione', 'Seleziona almeno un destinatario (te stesso o un cliente) per la scheda.');
+      showToast('error', 'Seleziona almeno un destinatario (te stesso o un cliente) per la scheda.');
+      return;
+    }
     if (blocks.length === 0) {
+      Alert.alert('Attenzione', 'Aggiungi almeno un blocco di esercizi alla scheda prima di salvare.');
       showToast('error', 'Aggiungi almeno un blocco di esercizi alla scheda.');
       return;
     }
 
     const emptyBlock = blocks.find((b) => b.exercises.length === 0);
     if (emptyBlock) {
+      Alert.alert('Attenzione', 'Ogni blocco deve contenere almeno un esercizio.');
       showToast('error', 'Ogni blocco deve contenere almeno un esercizio.');
       return;
     }
@@ -901,6 +1012,7 @@ export const NewRoutineModal: React.FC = () => {
     if (emptySetExercise) {
       const catalogEx = exerciseCatalogMap.get(emptySetExercise.exerciseId);
       const exName = catalogEx?.name || 'un esercizio';
+      Alert.alert('Attenzione', `L'esercizio "${exName}" non ha serie. Aggiungi almeno una serie o rimuovilo.`);
       showToast(
         'error',
         `L'esercizio "${exName}" non ha serie. Aggiungi almeno una serie o rimuovilo.`
@@ -908,7 +1020,16 @@ export const NewRoutineModal: React.FC = () => {
       return;
     }
 
+    // Dismiss della tastiera per confermare lo stato dei campi di testo
+    Keyboard.dismiss();
+
+    // Concurrency Guard sincrono
+    if (isSavingRef.current) return;
+    isSavingRef.current = true;
+
+    // 2. Attivazione stato di caricamento
     setIsSaving(true);
+
     try {
       const blocksPayload: RoutineBlock[] = blocks.map((b, bIdx) => ({
         block_type: b.blockType,
@@ -932,10 +1053,18 @@ export const NewRoutineModal: React.FC = () => {
                   {
                     set_number: 1,
                     set_type: 'NORMAL',
-                    target_weight_kg: 0,
-                    target_reps: 0,
+                    target_weight_kg:
+                      ex.sets[0]?.equipment === 'kg'
+                        ? Number(ex.sets[0]?.targetWeightKg || 0)
+                        : 0,
+                    target_reps: Number(ex.sets[0]?.targetReps || 0),
                     target_time_seconds: b.intervalWorkSeconds || 40,
-                    band_assistance: ex.sets[0]?.bandAssistance || 'none',
+                    band_assistance:
+                      ex.sets[0]?.equipment === 'band'
+                        ? (ex.sets[0]?.bandIntensity || ex.sets[0]?.bandAssistance || 'medium')
+                        : (ex.sets[0]?.bandAssistance && ex.sets[0]?.bandAssistance !== 'none'
+                          ? ex.sets[0]?.bandAssistance
+                          : 'none'),
                     drop_count: 0,
                     drop_percentage: null,
                     rest_seconds: b.intervalRestSeconds || 20,
@@ -945,7 +1074,8 @@ export const NewRoutineModal: React.FC = () => {
               : ex.sets.map((s, sIdx) => {
                   let targetReps = 0;
                   let targetTimeSeconds: number | null = null;
-                  if (s.targetType === 'time') {
+                  const isTimeTarget = s.targetType === 'time' || (s.targetTimeSeconds != null && Number(s.targetTimeSeconds) > 0);
+                  if (isTimeTarget) {
                     targetTimeSeconds = Number(s.targetValue ?? s.targetTimeSeconds ?? 30);
                     targetReps = 0;
                   } else {
@@ -1001,33 +1131,69 @@ export const NewRoutineModal: React.FC = () => {
         owner_id: selectedClientIds.length > 0 ? selectedClientIds[0] : undefined,
       };
 
+      // 3. Esecuzione Chiamata API Sequenziale
       if (mode === 'UPDATE' && isEditing && routineId) {
         await updateRoutine(routineId, routineData);
-        showToast('success', 'Scheda aggiornata con successo!');
       } else {
         await addRoutine(routineData);
-        showToast('success', mode === 'CREATE_NEW' && isEditing ? 'Scheda duplicata come nuova con successo!' : 'Scheda creata e assegnata con successo!');
       }
+
+      // 4. Disattivazione stato di caricamento e lock
+      isSavingRef.current = false;
+      setIsSaving(false);
+
+      // 5. Success feedback & Chiusura ordinata
+      const successMsg =
+        mode === 'UPDATE'
+          ? 'Scheda aggiornata con successo!'
+          : mode === 'CREATE_NEW' && isEditing
+          ? 'Scheda duplicata come nuova con successo!'
+          : 'Scheda creata e assegnata con successo!';
+      showToast('success', successMsg);
 
       setTimeout(() => {
         navigation.goBack();
-      }, 700);
+      }, 500);
     } catch (err: any) {
-      showToast('error', err?.message || 'Errore durante il salvataggio della scheda.');
-    } finally {
+      isSavingRef.current = false;
       setIsSaving(false);
+
+      const errorMsg =
+        err?.message ||
+        'Si è verificato un errore durante il salvataggio della scheda sul server. Riprova.';
+      Alert.alert('Errore Salvataggio', errorMsg, [{ text: 'OK' }]);
+      showToast('error', errorMsg);
     }
   };
 
-  const handleDelete = async () => {
+  const confirmDeleteRoutine = () => {
     if (!routineId) return;
-    try {
-      await deleteRoutine(routineId);
-      setShowDeleteConfirm(false);
-      navigation.goBack();
-    } catch (e: any) {
-      showToast('error', e?.message || 'Impossibile eliminare la scheda.');
-    }
+    Alert.alert(
+      'Elimina Scheda',
+      "Vuoi davvero eliminare questa scheda? L'azione è irreversibile.",
+      [
+        { text: 'Annulla', style: 'cancel' },
+        {
+          text: 'Elimina',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setIsDeleting(true);
+              await deleteRoutine(routineId);
+              showToast('success', 'Scheda eliminata con successo!');
+              setTimeout(() => {
+                navigation.goBack();
+              }, 500);
+            } catch (e: any) {
+              setIsDeleting(false);
+              const err = e?.message || 'Impossibile eliminare la scheda.';
+              Alert.alert('Errore Eliminazione', err, [{ text: 'OK' }]);
+              showToast('error', err);
+            }
+          },
+        },
+      ]
+    );
   };
 
   // -------------------------------------------------------------
@@ -1037,36 +1203,23 @@ export const NewRoutineModal: React.FC = () => {
     <View style={[styles.screen, { paddingTop: insets.top }]}>
       {/* HEADER BAR */}
       <View style={styles.topBar}>
-        <Pressable
-          onPress={() => navigation.goBack()}
-          style={styles.topBarBtn}
-          accessibilityRole="button"
-          accessibilityLabel="Chiudi"
-        >
-          <Text style={styles.topBarCloseText}>✕</Text>
-        </Pressable>
-
         <Text style={styles.topBarTitle} numberOfLines={1}>
           {isEditing ? 'Modifica Scheda' : 'Costruttore Scheda'}
         </Text>
 
         <Pressable
-          onPress={() => handleSave(isEditing ? 'UPDATE' : 'CREATE_NEW')}
-          disabled={isSaving}
-          style={[styles.saveBtn, isSaving && { opacity: 0.6 }]}
+          onPress={() => navigation.goBack()}
+          style={styles.cancelHeaderBtn}
           accessibilityRole="button"
-          accessibilityLabel="Salva scheda"
+          accessibilityLabel="Annulla e chiudi modale"
         >
-          {isSaving ? (
-            <ActivityIndicator size="small" color={colors.white} />
-          ) : (
-            <Text style={styles.saveBtnText}>{isEditing ? 'Aggiorna' : 'Salva'}</Text>
-          )}
+          <Text style={styles.cancelHeaderBtnText}>Annulla</Text>
         </Pressable>
       </View>
 
       <ScrollView
         style={styles.scrollArea}
+        keyboardShouldPersistTaps="handled"
         contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 100 }]}
         showsVerticalScrollIndicator={false}
       >
@@ -1075,15 +1228,19 @@ export const NewRoutineModal: React.FC = () => {
         {/* ======================================================== */}
         <Card style={styles.metaCard}>
           {/* ASSEGNAZIONE MULTI-CLIENTE (TRAINER) */}
-          {userRole === 'TRAINER' && availableClients.length > 0 && (
+          {isTrainer && (
             <View style={styles.clientsSection}>
               <View style={styles.sectionHeaderRow}>
-                <Text style={styles.sectionLabel}>ASSEGNA AD ATLETE</Text>
+                <Text style={styles.sectionLabel}>
+                  {`DESTINATARI SCHEDA (${selectedClientIds.length} ${
+                    selectedClientIds.length === 1 ? 'selezionato' : 'selezionati'
+                  })`}
+                </Text>
                 <Pressable onPress={handleToggleAllClients}>
                   <Text style={styles.toggleAllText}>
                     {selectedClientIds.length === availableClients.length
-                      ? 'Deseleziona tutte'
-                      : 'Seleziona tutte'}
+                      ? 'Deseleziona tutti'
+                      : 'Seleziona tutti'}
                   </Text>
                 </Pressable>
               </View>
@@ -1112,7 +1269,7 @@ export const NewRoutineModal: React.FC = () => {
               </ScrollView>
               {selectedClientIds.length > 1 && (
                 <Text style={styles.cloneNotice}>
-                  ⚡ Verrà creata una copia fisica indipendente per ciascuna delle {selectedClientIds.length} atlete selezionate.
+                  ⚡ Verrà creata una copia fisica indipendente per ciascuno dei {selectedClientIds.length} destinatari selezionati.
                 </Text>
               )}
             </View>
@@ -1325,9 +1482,13 @@ export const NewRoutineModal: React.FC = () => {
                   </Pressable>
                   <Pressable
                     onPress={() => toggleBlockCollapse(block.tempId)}
-                    style={styles.blockActionBtn}
+                    style={styles.blockCollapseBtn}
+                    accessibilityRole="button"
+                    accessibilityLabel={isCollapsed ? 'Espandi blocco' : 'Riduci blocco'}
                   >
-                    <Text style={styles.blockActionBtnText}>{isCollapsed ? '➕' : '➖'}</Text>
+                    <Text style={styles.blockCollapseBtnText}>
+                      {isCollapsed ? '▼ Espandi' : '▲ Riduci'}
+                    </Text>
                   </Pressable>
                   <Pressable
                     onPress={() => handleRemoveBlock(block.tempId)}
@@ -1337,6 +1498,25 @@ export const NewRoutineModal: React.FC = () => {
                   </Pressable>
                 </View>
               </View>
+
+              {/* COLLAPSED BLOCK SUMMARY */}
+              {isCollapsed && (
+                <Pressable
+                  onPress={() => toggleBlockCollapse(block.tempId)}
+                  style={styles.blockCollapsedSummaryRow}
+                  accessibilityRole="button"
+                  accessibilityLabel="Tocca per espandere il blocco"
+                >
+                  <Text style={styles.blockCollapsedSummaryText}>
+                    📦 {block.exercises.length} {block.exercises.length === 1 ? 'esercizio' : 'esercizi'}
+                    {block.exercises.length > 0
+                      ? ` • ${block.exercises
+                          .map((e) => exerciseCatalogMap.get(e.exerciseId)?.name || 'Esercizio')
+                          .join(' + ')}`
+                      : ''} • Tocca per espandere
+                  </Text>
+                </Pressable>
+              )}
 
               {/* BLOCK SETTINGS BAR (FOR SUPERSERIE, CIRCUITS, INTERVAL) */}
               {!isCollapsed && block.blockType !== 'SINGLE' && (
@@ -1546,23 +1726,115 @@ export const NewRoutineModal: React.FC = () => {
                         )}
 
                         {/* ======================================================== */}
-                        {/* CASE A: INTERVAL TRAINING (NO REPS, NO SETS RECOVERY)    */}
+                        {/* CASE A: INTERVAL TRAINING (TARGET REPS & ATTREZZATURA)  */}
                         {/* ======================================================== */}
                         {block.blockType === 'CIRCUIT_INTERVAL' ? (
                           <>
                             <View style={styles.intervalExRow}>
                               <Text style={styles.intervalOnlyNotice}>
-                                ⏱ {block.intervalWorkSeconds || 40}s Work / {block.intervalRestSeconds || 20}s Rest definiti dal timer globale.
+                                ⏱ {block.intervalWorkSeconds || 40}s Work / {block.intervalRestSeconds || 20}s Rest (definiti dall'header del circuito)
                               </Text>
-                              <View style={{ width: 140 }}>
-                                <BandSelectDropdown
-                                  value={ex.sets[0]?.bandAssistance || 'none'}
-                                  onChange={(val: BandAssistance) =>
-                                    handleUpdateSet(block.tempId, ex.tempId, 0, 'bandAssistance', val)
-                                  }
-                                />
-                              </View>
                             </View>
+
+                            {/* Row: Target Reps & Equipment / Load Selector */}
+                            {(() => {
+                              const set = ex.sets[0] || {
+                                setNumber: 1,
+                                setType: 'NORMAL' as SetType,
+                                targetType: 'time' as TargetType,
+                                targetValue: block.intervalWorkSeconds || 40,
+                                targetWeightKg: 0,
+                                targetReps: 0,
+                                targetTimeSeconds: block.intervalWorkSeconds || 40,
+                                equipment: 'bodyweight' as EquipmentType,
+                                bandAssistance: 'none' as BandAssistance,
+                                bandIntensity: 'medium' as BandIntensity,
+                                restSeconds: block.intervalRestSeconds || 20,
+                              };
+
+                              return (
+                                <View style={[styles.setControlsRow, { marginTop: 6, marginBottom: 8 }]}>
+                                  {/* Target Reps Input */}
+                                  <View style={styles.controlGroup}>
+                                    <Text style={styles.controlGroupLabel}>TARGET REPS</Text>
+                                    <TextInput
+                                      style={styles.controlNumericInput}
+                                      keyboardType="numeric"
+                                      value={set.targetReps ? String(set.targetReps) : ''}
+                                      onChangeText={(v) => {
+                                        const num = parseInt(v, 10) || 0;
+                                        handleUpdateSetFields(block.tempId, ex.tempId, 0, {
+                                          targetReps: num,
+                                          targetValue: num,
+                                        });
+                                      }}
+                                      placeholder="es. 10 (o max)"
+                                      placeholderTextColor={colors.textMuted}
+                                    />
+                                  </View>
+
+                                  {/* Equipment / Load Selector */}
+                                  <View style={styles.controlGroup}>
+                                    <Text style={styles.controlGroupLabel}>ATTREZZATURA / CARICO</Text>
+                                    <View style={styles.controlComboRow}>
+                                      <CompactDropdown
+                                        title="Attrezzatura"
+                                        value={set.equipment || 'bodyweight'}
+                                        options={EQUIPMENT_OPTIONS}
+                                        onChange={(newEquip) => {
+                                          handleUpdateSet(block.tempId, ex.tempId, 0, 'equipment', newEquip);
+                                          if (newEquip === 'band' && !set.bandIntensity) {
+                                            handleUpdateSet(block.tempId, ex.tempId, 0, 'bandIntensity', 'medium');
+                                          }
+                                        }}
+                                        minWidth={88}
+                                      />
+
+                                      {set.equipment === 'kg' && (
+                                        <View style={styles.inputWithUnit}>
+                                          <TextInput
+                                            style={styles.controlNumericInput}
+                                            keyboardType="decimal-pad"
+                                            value={set.targetWeightKg === 0 ? '' : String(set.targetWeightKg)}
+                                            onChangeText={(v) =>
+                                              handleUpdateSet(
+                                                block.tempId,
+                                                ex.tempId,
+                                                0,
+                                                'targetWeightKg',
+                                                parseFloat(v) || 0
+                                              )
+                                            }
+                                            placeholder="0"
+                                            placeholderTextColor={colors.textMuted}
+                                          />
+                                          <Text style={styles.unitSuffix}>kg</Text>
+                                        </View>
+                                      )}
+
+                                      {set.equipment === 'band' && (
+                                        <CompactDropdown
+                                          title="Intensità Elastico"
+                                          value={set.bandIntensity || 'medium'}
+                                          options={BAND_INTENSITY_OPTIONS}
+                                          onChange={(val) => {
+                                            handleUpdateSet(block.tempId, ex.tempId, 0, 'bandIntensity', val);
+                                            handleUpdateSet(block.tempId, ex.tempId, 0, 'bandAssistance', val);
+                                          }}
+                                          minWidth={80}
+                                        />
+                                      )}
+
+                                      {set.equipment === 'bodyweight' && (
+                                        <View style={styles.bodyweightBadge}>
+                                          <Text style={styles.bodyweightBadgeText}>Libero</Text>
+                                        </View>
+                                      )}
+                                    </View>
+                                  </View>
+                                </View>
+                              );
+                            })()}
 
                             {!isNotesOpen && (
                               <View style={styles.exActionButtonsRow}>
@@ -1664,17 +1936,22 @@ export const NewRoutineModal: React.FC = () => {
                                               value={set.targetType || 'reps'}
                                               options={TARGET_OPTIONS}
                                               onChange={(newType) => {
-                                                handleUpdateSet(block.tempId, ex.tempId, sIdx, 'targetType', newType);
                                                 if (newType === 'time') {
                                                   const val = set.targetTimeSeconds || (set.targetType === 'time' ? set.targetValue : 30) || 30;
-                                                  handleUpdateSet(block.tempId, ex.tempId, sIdx, 'targetValue', val);
-                                                  handleUpdateSet(block.tempId, ex.tempId, sIdx, 'targetTimeSeconds', val);
-                                                  handleUpdateSet(block.tempId, ex.tempId, sIdx, 'targetReps', 0);
+                                                  handleUpdateSetFields(block.tempId, ex.tempId, sIdx, {
+                                                    targetType: 'time',
+                                                    targetValue: val,
+                                                    targetTimeSeconds: val,
+                                                    targetReps: 0,
+                                                  });
                                                 } else {
                                                   const val = set.targetReps || (set.targetType === 'reps' ? set.targetValue : 10) || 10;
-                                                  handleUpdateSet(block.tempId, ex.tempId, sIdx, 'targetValue', val);
-                                                  handleUpdateSet(block.tempId, ex.tempId, sIdx, 'targetReps', val);
-                                                  handleUpdateSet(block.tempId, ex.tempId, sIdx, 'targetTimeSeconds', null);
+                                                  handleUpdateSetFields(block.tempId, ex.tempId, sIdx, {
+                                                    targetType: 'reps',
+                                                    targetValue: val,
+                                                    targetReps: val,
+                                                    targetTimeSeconds: null,
+                                                  });
                                                 }
                                               }}
                                               minWidth={78}
@@ -1689,13 +1966,18 @@ export const NewRoutineModal: React.FC = () => {
                                               }
                                               onChangeText={(v) => {
                                                 const num = parseInt(v, 10) || 0;
-                                                handleUpdateSet(block.tempId, ex.tempId, sIdx, 'targetValue', num);
                                                 if (set.targetType === 'time') {
-                                                  handleUpdateSet(block.tempId, ex.tempId, sIdx, 'targetTimeSeconds', num);
-                                                  handleUpdateSet(block.tempId, ex.tempId, sIdx, 'targetReps', 0);
+                                                  handleUpdateSetFields(block.tempId, ex.tempId, sIdx, {
+                                                    targetValue: num,
+                                                    targetTimeSeconds: num,
+                                                    targetReps: 0,
+                                                  });
                                                 } else {
-                                                  handleUpdateSet(block.tempId, ex.tempId, sIdx, 'targetReps', num);
-                                                  handleUpdateSet(block.tempId, ex.tempId, sIdx, 'targetTimeSeconds', null);
+                                                  handleUpdateSetFields(block.tempId, ex.tempId, sIdx, {
+                                                    targetValue: num,
+                                                    targetReps: num,
+                                                    targetTimeSeconds: null,
+                                                  });
                                                 }
                                               }}
                                               placeholder={set.targetType === 'time' ? '30s' : '10'}
@@ -1987,69 +2269,81 @@ export const NewRoutineModal: React.FC = () => {
             >
               <Text style={styles.blockTypeBtnIcon}>⏱</Text>
               <Text style={styles.blockTypeBtnTitle}>INTERVAL TRAINING (HIIT)</Text>
-              <Text style={styles.blockTypeBtnDesc}>Giri, secondi Work & Rest. Zero reps individuali</Text>
+              <Text style={styles.blockTypeBtnDesc}>Giri, secondi Work & Rest. Target reps e carichi/elastici</Text>
             </Pressable>
           </View>
         </View>
 
-        {/* FOOTER ACTIONS: AGGIORNA ESISTENTE / SALVA COME NUOVA (DUPLICA) */}
-        <View style={styles.footerSaveActionsRow}>
+        {/* FOOTER ACTIONS */}
+        <View style={styles.footerContainer}>
           {isEditing ? (
             <>
-              <Pressable
-                onPress={() => handleSave('UPDATE')}
-                disabled={isSaving}
-                style={[styles.updateRoutineBtn, isSaving && { opacity: 0.6 }]}
-                accessibilityRole="button"
-                accessibilityLabel="Aggiorna scheda esistente"
-              >
-                {isSaving ? (
-                  <ActivityIndicator size="small" color={colors.white} />
-                ) : (
-                  <Text style={styles.updateRoutineBtnText}>🔄 AGGIORNA ESISTENTE</Text>
-                )}
-              </Pressable>
+              <View style={styles.footerEditTopRow}>
+                {/* 1. CREA NUOVA */}
+                <Pressable
+                  onPress={() => handleSave('CREATE_NEW')}
+                  disabled={isSaving || isDeleting}
+                  style={[styles.saveAsNewRoutineBtn, (isSaving || isDeleting) && { opacity: 0.6 }]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Crea nuova scheda duplicata"
+                >
+                  {isSaving ? (
+                    <ActivityIndicator size="small" color="#10B981" />
+                  ) : (
+                    <Text style={styles.saveAsNewRoutineBtnText}>🆕 CREA NUOVA</Text>
+                  )}
+                </Pressable>
 
+                {/* 2. AGGIORNA ORIGINALE */}
+                <Pressable
+                  onPress={() => handleSave('UPDATE')}
+                  disabled={isSaving || isDeleting}
+                  style={[styles.updateRoutineBtn, (isSaving || isDeleting) && { opacity: 0.6 }]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Aggiorna scheda originale"
+                >
+                  {isSaving ? (
+                    <ActivityIndicator size="small" color={colors.white} />
+                  ) : (
+                    <Text style={styles.updateRoutineBtnText}>🔄 AGGIORNA ORIGINALE</Text>
+                  )}
+                </Pressable>
+              </View>
+
+              {/* 3. ELIMINA SCHEDA */}
               <Pressable
-                onPress={() => handleSave('CREATE_NEW')}
-                disabled={isSaving}
-                style={[styles.saveAsNewRoutineBtn, isSaving && { opacity: 0.6 }]}
+                onPress={confirmDeleteRoutine}
+                disabled={isSaving || isDeleting}
+                style={[styles.deleteRoutineBtn, (isSaving || isDeleting) && { opacity: 0.6 }]}
                 accessibilityRole="button"
-                accessibilityLabel="Salva scheda come nuova copia"
+                accessibilityLabel="Elimina scheda"
               >
-                {isSaving ? (
-                  <ActivityIndicator size="small" color="#10B981" />
+                {isDeleting ? (
+                  <ActivityIndicator size="small" color={colors.danger} />
                 ) : (
-                  <Text style={styles.saveAsNewRoutineBtnText}>🆕 SALVA COME NUOVA</Text>
+                  <Text style={styles.deleteRoutineBtnText}>🗑️ ELIMINA SCHEDA</Text>
                 )}
               </Pressable>
             </>
           ) : (
-            <Pressable
-              onPress={() => handleSave('CREATE_NEW')}
-              disabled={isSaving}
-              style={[styles.saveRoutineFullBtn, isSaving && { opacity: 0.6 }]}
-              accessibilityRole="button"
-              accessibilityLabel="Salva nuova scheda"
-            >
-              {isSaving ? (
-                <ActivityIndicator size="small" color={colors.white} />
-              ) : (
-                <Text style={styles.saveRoutineFullBtnText}>💾 SALVA SCHEDA</Text>
-              )}
-            </Pressable>
+            <View style={styles.footerCreateRow}>
+              {/* CREA SCHEDA */}
+              <Pressable
+                onPress={() => handleSave('CREATE_NEW')}
+                disabled={isSaving}
+                style={[styles.saveRoutineFullBtn, isSaving && { opacity: 0.6 }]}
+                accessibilityRole="button"
+                accessibilityLabel="Crea nuova scheda"
+              >
+                {isSaving ? (
+                  <ActivityIndicator size="small" color={colors.white} />
+                ) : (
+                  <Text style={styles.saveRoutineFullBtnText}>✓ CREA SCHEDA</Text>
+                )}
+              </Pressable>
+            </View>
           )}
         </View>
-
-        {/* ELIMINA SCHEDA (SE IN EDITING) */}
-        {isEditing && (
-          <Pressable
-            onPress={() => setShowDeleteConfirm(true)}
-            style={styles.deleteRoutineBtn}
-          >
-            <Text style={styles.deleteRoutineBtnText}>🗑 Elimina questa Scheda</Text>
-          </Pressable>
-        )}
       </ScrollView>
 
       {/* ======================================================== */}
@@ -2182,16 +2476,7 @@ export const NewRoutineModal: React.FC = () => {
         onClose={() => setActiveVideoModal({ visible: false, url: '', name: '' })}
       />
 
-      {/* DELETE CONFIRM MODAL */}
-      <CustomConfirmModal
-        visible={showDeleteConfirm}
-        title="Elimina Scheda"
-        message="Sei sicuro di voler eliminare questa scheda? Le sessioni di allenamento storiche già svolte dagli atleti rimarranno comunque al 100% intatte."
-        confirmText="Elimina Definitivamente"
-        isDestructive
-        onConfirm={handleDelete}
-        onCancel={() => setShowDeleteConfirm(false)}
-      />
+
 
       {/* TOAST FEEDBACK */}
       <ToastFeedback
@@ -2222,37 +2507,21 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
     backgroundColor: colors.backgroundElevated,
   },
-  topBarBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.backgroundSubtle,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  topBarCloseText: {
-    color: colors.text,
-    fontSize: 16,
-    fontWeight: '700',
-  },
   topBarTitle: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '800',
     color: colors.text,
-    textAlign: 'center',
     flex: 1,
-    marginHorizontal: 12,
   },
-  saveBtn: {
-    backgroundColor: colors.emerald,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+  cancelHeaderBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 10,
     borderRadius: 8,
   },
-  saveBtnText: {
-    color: colors.white,
-    fontWeight: '800',
-    fontSize: 14,
+  cancelHeaderBtnText: {
+    color: colors.textSecondary,
+    fontSize: 15,
+    fontWeight: '600',
   },
   scrollArea: {
     flex: 1,
@@ -2547,6 +2816,36 @@ const styles = StyleSheet.create({
   },
   blockDeleteBtn: {
     backgroundColor: 'rgba(239, 68, 68, 0.15)',
+  },
+  blockCollapseBtn: {
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 6,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  blockCollapseBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.accent,
+  },
+  blockCollapsedSummaryRow: {
+    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    borderRadius: layout.borderRadiusSm,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginTop: 8,
+  },
+  blockCollapsedSummaryText: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    fontWeight: '600',
   },
   blockSettingsCard: {
     backgroundColor: 'rgba(0, 0, 0, 0.25)',
@@ -3130,15 +3429,22 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     lineHeight: 15,
   },
-  footerSaveActionsRow: {
+  footerContainer: {
+    marginTop: 18,
+    marginBottom: 8,
+    gap: 10,
+  },
+  footerEditTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    marginTop: 14,
-    marginBottom: 6,
+  },
+  footerCreateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   updateRoutineBtn: {
-    flex: 1,
+    flex: 1.15,
     paddingVertical: 14,
     borderRadius: 8,
     backgroundColor: colors.accent,
@@ -3148,14 +3454,15 @@ const styles = StyleSheet.create({
   updateRoutineBtnText: {
     color: colors.white,
     fontWeight: '800',
-    fontSize: 12,
+    fontSize: 12.5,
+    letterSpacing: 0.3,
   },
   saveAsNewRoutineBtn: {
     flex: 1,
     paddingVertical: 14,
     borderRadius: 8,
-    backgroundColor: 'rgba(16, 185, 129, 0.15)',
-    borderWidth: 1,
+    backgroundColor: 'rgba(16, 185, 129, 0.12)',
+    borderWidth: 1.5,
     borderColor: '#10B981',
     alignItems: 'center',
     justifyContent: 'center',
@@ -3163,11 +3470,12 @@ const styles = StyleSheet.create({
   saveAsNewRoutineBtnText: {
     color: '#10B981',
     fontWeight: '800',
-    fontSize: 12,
+    fontSize: 12.5,
+    letterSpacing: 0.3,
   },
   saveRoutineFullBtn: {
     flex: 1,
-    paddingVertical: 14,
+    paddingVertical: 15,
     borderRadius: 8,
     backgroundColor: colors.accent,
     alignItems: 'center',
@@ -3176,22 +3484,24 @@ const styles = StyleSheet.create({
   saveRoutineFullBtnText: {
     color: colors.white,
     fontWeight: '800',
-    fontSize: 13,
+    fontSize: 14,
+    letterSpacing: 0.5,
   },
   deleteRoutineBtn: {
-    paddingVertical: 14,
+    width: '100%',
+    paddingVertical: 13,
     borderRadius: 8,
-    backgroundColor: 'rgba(239, 68, 68, 0.1)',
-    borderWidth: 1,
+    backgroundColor: 'rgba(239, 68, 68, 0.08)',
+    borderWidth: 1.5,
     borderColor: colors.danger,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 10,
   },
   deleteRoutineBtnText: {
     color: colors.danger,
     fontWeight: '800',
     fontSize: 13,
+    letterSpacing: 0.3,
   },
 
   // Picker Modal

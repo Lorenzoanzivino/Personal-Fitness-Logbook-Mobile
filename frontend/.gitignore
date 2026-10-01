@@ -1,0 +1,41 @@
+# Expo & React Native Frontend .gitignore
+node_modules/
+.expo/
+dist/
+web-build/
+build/
+bin/
+*.apk
+*.aab
+*.tar.gz
+/ios
+/android
+.kotlin/
+expo-env.d.ts
+*.tsbuildinfo
+
+# Environment variables
+.env
+.env.*
+*.env
+*.env.*
+*.bak
+*.backup
+!.env.example
+!.env.*.example
+
+# Secrets & Keystores
+*.jks
+*.keystore
+*.p8
+*.p12
+*.key
+*.pem
+*.mobileprovision
+*.orig.*
+
+# Logs & Debug
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+*.log

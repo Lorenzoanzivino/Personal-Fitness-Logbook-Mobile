@@ -68,7 +68,9 @@ async function start() {
     // 2. Avvio Server Fastify con bind esplicito su 0.0.0.0 (LAN + Localhost)
     const app = await buildApp();
     await app.ready();
-    console.log('📋 [FASTIFY ROUTE TREE]:\n' + app.printRoutes());
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('📋 [FASTIFY ROUTE TREE]:\n' + app.printRoutes());
+    }
     await app.listen({ port, host: '0.0.0.0' });
     console.log(`🚀 [FASTIFY BIND] In ascolto su http://0.0.0.0:${port} (accessibile sia da localhost che da IP LAN)`);
     app.log.info(`🚀 Server Fastify in ascolto su http://0.0.0.0:${port}`);

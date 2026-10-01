@@ -174,17 +174,24 @@ export const GymProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const filteredRoutines = routines.filter((r) => {
     if (userRole === 'TRAINER') {
       if (selectedClient) {
-        return r.owner_id === selectedClient.id;
+        return String(r.owner_id) === String(selectedClient.id);
       }
       return (
         !r.owner_id ||
-        r.owner_id === 'trainer-1' ||
-        r.owner_id === userProfile.id
+        String(r.owner_id) === 'trainer-1' ||
+        String(r.owner_id) === 'trainer-marco-1' ||
+        String(r.owner_id) === String(userProfile.id)
       );
     } else {
+      // Per il CLIENT: se non ha owner_id o se corrisponde al client o se non è un ID trainer noto
+      if (!r.owner_id) return true;
+      if (String(r.owner_id) === 'trainer-1' || String(r.owner_id) === 'trainer-marco-1') {
+        return false;
+      }
       return (
-        r.owner_id === activeOwnerId ||
-        r.owner_id === userProfile.id
+        String(r.owner_id) === String(activeOwnerId) ||
+        String(r.owner_id) === String(userProfile.id) ||
+        true
       );
     }
   });
@@ -193,25 +200,30 @@ export const GymProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const filteredFolders = folders.filter((f) => {
     if (userRole === 'TRAINER') {
       if (selectedClient) {
-        return f.owner_id === selectedClient.id;
+        return String(f.owner_id) === String(selectedClient.id);
       }
       return (
         !f.owner_id ||
-        f.owner_id === 'trainer-1' ||
-        f.owner_id === userProfile.id
+        String(f.owner_id) === 'trainer-1' ||
+        String(f.owner_id) === 'trainer-marco-1' ||
+        String(f.owner_id) === String(userProfile.id)
       );
     } else {
+      if (!f.owner_id) return true;
+      if (String(f.owner_id) === 'trainer-1' || String(f.owner_id) === 'trainer-marco-1') {
+        return false;
+      }
       return (
-        !f.owner_id ||
-        f.owner_id === activeOwnerId ||
-        f.owner_id === userProfile.id
+        String(f.owner_id) === String(activeOwnerId) ||
+        String(f.owner_id) === String(userProfile.id) ||
+        true
       );
     }
   });
 
   useEffect(() => {
     loadAllGymData();
-  }, []);
+  }, [userProfile.id, userProfile.role, selectedClient?.id]);
 
   const loadAllGymData = async () => {
     setLoading(true);
@@ -235,11 +247,14 @@ export const GymProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             ? apiService.fetchExercises()
             : Promise.resolve({ success: false, data: [] as any[] });
 
+        const targetOwnerId =
+          userRole === 'TRAINER' && selectedClient ? selectedClient.id : undefined;
+
         const [remoteEx, remoteRout, remoteWork, remoteFold] = await Promise.all([
           fetchExPromise,
-          apiService.fetchRoutinesByOwner(),
-          apiService.fetchWorkoutsByOwner(),
-          apiService.fetchFoldersByOwner(),
+          apiService.fetchRoutinesByOwner(targetOwnerId),
+          apiService.fetchWorkoutsByOwner(targetOwnerId),
+          apiService.fetchFoldersByOwner(targetOwnerId),
         ]);
 
         if (remoteEx.success && remoteEx.data && remoteEx.data.length > 0) {
@@ -394,26 +409,41 @@ export const GymProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     data: Omit<WorkoutRoutine, 'id' | 'created_at' | 'updated_at'>
   ): Promise<WorkoutRoutine> => {
     const trimmedName = data.name.trim();
+    if (!trimmedName) throw new Error('Il nome della scheda non può essere vuoto.');
+
     const clientList = data.client_ids || data.clientIds;
     const targetOwnerId =
       clientList && clientList.length > 0
         ? String(clientList[0])
         : (data.owner_id || activeOwnerId);
 
-    const duplicate = routines.find(
+    // Se esiste già una scheda con lo stesso nome per questo owner, appendiamo " (Copia)" invece di bloccare
+    let finalName = trimmedName;
+    const isDuplicate = routines.some(
       (r) =>
-        (r.owner_id || userProfile.id || 'trainer-1') === targetOwnerId &&
-        r.name.trim().toLowerCase() === trimmedName.toLowerCase()
+        String(r.owner_id || userProfile.id || 'trainer-1') === String(targetOwnerId) &&
+        r.name.trim().toLowerCase() === finalName.toLowerCase()
     );
-    if (duplicate) {
-      throw new Error(`Esiste già una scheda con il nome "${trimmedName}". Scegli un nome diverso.`);
+    if (isDuplicate) {
+      let copyIndex = 1;
+      finalName = `${trimmedName} (Copia)`;
+      while (
+        routines.some(
+          (r) =>
+            String(r.owner_id || userProfile.id || 'trainer-1') === String(targetOwnerId) &&
+            r.name.trim().toLowerCase() === finalName.toLowerCase()
+        )
+      ) {
+        copyIndex++;
+        finalName = `${trimmedName} (Copia ${copyIndex})`;
+      }
     }
 
     // 1. Prova creazione su backend remoto
     try {
       const remoteRes = await apiService.createRoutine({
         ...data,
-        name: trimmedName,
+        name: finalName,
         owner_id: targetOwnerId,
         folderId: (data as any).folderId || data.folder_id || null,
         folder_id: data.folder_id || (data as any).folderId || null,
@@ -425,8 +455,13 @@ export const GymProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       if (remoteRes.success && remoteRes.data) {
         await loadAllGymData();
         return remoteRes.data;
+      } else if (!remoteRes.success && remoteRes.error) {
+        throw new Error(remoteRes.error.message || 'Errore durante la creazione della scheda');
       }
-    } catch {
+    } catch (err: any) {
+      if (err?.message && !err.message.includes('Network') && !err.message.includes('fetch')) {
+        throw err;
+      }
       // Fallback offline
     }
 
@@ -434,7 +469,7 @@ export const GymProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const now = new Date().toISOString();
     const newRoutine: WorkoutRoutine = {
       ...data,
-      name: trimmedName,
+      name: finalName,
       id: newId,
       owner_id: targetOwnerId,
       created_at: now,
@@ -454,7 +489,7 @@ export const GymProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       const duplicate = routines.find(
         (r) =>
           String(r.id) !== String(id) &&
-          (r.owner_id || userProfile.id || 'trainer-1') === targetOwnerId &&
+          String(r.owner_id || userProfile.id || 'trainer-1') === String(targetOwnerId) &&
           r.name.trim().toLowerCase() === trimmedName.toLowerCase()
       );
       if (duplicate) {
@@ -466,12 +501,15 @@ export const GymProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     try {
       const remoteRes = await apiService.updateRoutine(id, data);
       if (remoteRes.success && remoteRes.data) {
-        const updated = routines.map((r) => (r.id === id ? remoteRes.data! : r));
-        setRoutines(updated);
-        await gymStorage.saveRoutines(updated);
+        await loadAllGymData();
         return;
+      } else if (!remoteRes.success && remoteRes.error) {
+        throw new Error(remoteRes.error.message || 'Errore durante l\'aggiornamento della scheda');
       }
-    } catch {
+    } catch (err: any) {
+      if (err?.message && !err.message.includes('Network') && !err.message.includes('fetch')) {
+        throw err;
+      }
       // Fallback offline
     }
 

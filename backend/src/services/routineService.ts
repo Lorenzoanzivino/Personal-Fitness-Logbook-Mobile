@@ -286,21 +286,18 @@ export class RoutineService {
     let targetOwnerIds: string[] = [];
 
     if (Array.isArray(rawClientIds) && rawClientIds.length > 0) {
-      const cleaned = rawClientIds
+      const mapped = rawClientIds
         .map((id) => String(id).trim())
-        .filter((id) => id.length > 0);
+        .filter((id) => id.length > 0)
+        .map((id) => (id === 'trainer-1' || id === 'trainer-marco-1' ? authUser.id : id));
 
-      // Se ci sono clienti specificati, l'owner_id DEVE essere il cliente e NON il trainer loggato
-      const nonTrainerIds = cleaned.filter((id) => id !== authUser.id);
-      if (nonTrainerIds.length > 0) {
-        targetOwnerIds = Array.from(new Set(nonTrainerIds));
-      } else {
-        targetOwnerIds = Array.from(new Set(cleaned));
-      }
-    } else if (body.owner_id && String(body.owner_id).trim() && String(body.owner_id).trim() !== authUser.id) {
-      targetOwnerIds = [String(body.owner_id).trim()];
-    } else if ((body as any).ownerId && String((body as any).ownerId).trim() && String((body as any).ownerId).trim() !== authUser.id) {
-      targetOwnerIds = [String((body as any).ownerId).trim()];
+      targetOwnerIds = Array.from(new Set(mapped));
+    } else if (body.owner_id && String(body.owner_id).trim()) {
+      const rawId = String(body.owner_id).trim();
+      targetOwnerIds = [rawId === 'trainer-1' || rawId === 'trainer-marco-1' ? authUser.id : rawId];
+    } else if ((body as any).ownerId && String((body as any).ownerId).trim()) {
+      const rawId = String((body as any).ownerId).trim();
+      targetOwnerIds = [rawId === 'trainer-1' || rawId === 'trainer-marco-1' ? authUser.id : rawId];
     } else {
       targetOwnerIds = [authUser.id];
     }
@@ -412,7 +409,7 @@ export class RoutineService {
               orderIndex: blk.order_index ?? bIdx + 1,
               rounds: blk.rounds ?? 1,
               restBetweenRounds: blk.rest_between_rounds ?? 0,
-              circuitType: blk.circuit_type || 'STANDARD',
+              circuitType: circuitType,
               intervalWorkSeconds: blk.interval_work_seconds ?? null,
               intervalRestSeconds: blk.interval_rest_seconds ?? null,
             })
@@ -606,6 +603,38 @@ export class RoutineService {
 
     // TRANSAZIONE DRIZZLE PER AGGIORNAMENTO ATOMICO A CASCATA
     return await db.transaction(async (tx) => {
+      let targetOwnerId = r.ownerId;
+      const rawTargetOwnerId =
+        (body as any).ownerId ||
+        body.owner_id ||
+        (Array.isArray((body as any).clientIds) && (body as any).clientIds[0]) ||
+        (Array.isArray((body as any).client_ids) && (body as any).client_ids[0]);
+
+      if (rawTargetOwnerId) {
+        const cleanId =
+          String(rawTargetOwnerId).trim() === 'trainer-1' || String(rawTargetOwnerId).trim() === 'trainer-marco-1'
+            ? authUser.id
+            : String(rawTargetOwnerId).trim();
+
+        if (cleanId === authUser.id) {
+          targetOwnerId = authUser.id;
+        } else {
+          const clientRows = await tx
+            .select()
+            .from(users)
+            .where(and(eq(users.id, cleanId), eq(users.trainerId, authUser.id)));
+
+          if (clientRows.length === 0) {
+            throw {
+              statusCode: 403,
+              code: 'FORBIDDEN_CLIENT_ACCESS',
+              message: `Non puoi assegnare schede ad atlete non collegate al tuo account (ID: ${cleanId}).`,
+            };
+          }
+          targetOwnerId = cleanId;
+        }
+      }
+
       const effectiveFolderId =
         (body as any).folderId !== undefined
           ? ((body as any).folderId ? String((body as any).folderId).trim() : null)
@@ -630,7 +659,7 @@ export class RoutineService {
           await tx.insert(routineFolders).values({
             id: effectiveFolderId,
             name: effectiveFolderName || 'Cartella',
-            ownerId: r.ownerId,
+            ownerId: targetOwnerId,
           });
           if (!effectiveFolderName) {
             effectiveFolderName = 'Cartella';
@@ -644,6 +673,7 @@ export class RoutineService {
       await tx
         .update(workoutRoutines)
         .set({
+          ownerId: targetOwnerId,
           folderId: effectiveFolderId !== undefined ? effectiveFolderId : r.folderId,
           folderName: effectiveFolderName !== undefined ? effectiveFolderName : r.folderName,
           borderColor: body.border_color !== undefined ? body.border_color : r.borderColor,
@@ -756,7 +786,7 @@ export class RoutineService {
       }
 
       // Ricarica la scheda aggiornata
-      const updatedList = await this.getRoutines(authUser, r.ownerId);
+      const updatedList = await this.getRoutines(authUser, targetOwnerId);
       const found = updatedList.find((item) => item.id === id);
       return found!;
     });

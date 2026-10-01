@@ -14,23 +14,48 @@ import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
 import { layout, spacing } from '../theme/spacing';
 
+export const normalizeToDDMMYYYY = (val?: string | null): string => {
+  if (!val) return '';
+  const trimmed = val.trim();
+  if (!trimmed) return '';
+
+  // Case 1: DD-MM-YYYY or DD/MM/YYYY or DD.MM.YYYY (allowing spaces)
+  const dmyMatch = trimmed.match(/^(\d{1,2})\s*[-/.]\s*(\d{1,2})\s*[-/.]\s*(\d{4})/);
+  if (dmyMatch) {
+    const d = dmyMatch[1].padStart(2, '0');
+    const m = dmyMatch[2].padStart(2, '0');
+    const y = dmyMatch[3];
+    return `${d}-${m}-${y}`;
+  }
+
+  // Case 2: YYYY-MM-DD or YYYY/MM/DD (allowing spaces)
+  const ymdMatch = trimmed.match(/^(\d{4})\s*[-/.]\s*(\d{1,2})\s*[-/.]\s*(\d{1,2})/);
+  if (ymdMatch) {
+    const y = ymdMatch[1];
+    const m = ymdMatch[2].padStart(2, '0');
+    const d = ymdMatch[3].padStart(2, '0');
+    return `${d}-${m}-${y}`;
+  }
+
+  // Fallback: Date.parse
+  const parsed = new Date(trimmed);
+  if (!isNaN(parsed.getTime())) {
+    const day = String(parsed.getDate()).padStart(2, '0');
+    const month = String(parsed.getMonth() + 1).padStart(2, '0');
+    const year = parsed.getFullYear();
+    return `${day}-${month}-${year}`;
+  }
+
+  return trimmed;
+};
+
 export const parseAnyDate = (val?: Date | string | null): Date => {
   if (!val) return new Date();
   if (val instanceof Date) return isNaN(val.getTime()) ? new Date() : val;
   if (typeof val === 'string') {
-    // DD-MM-YYYY (es. 15-05-1996)
-    if (/^\d{2}-\d{2}-\d{4}$/.test(val)) {
-      const [d, m, y] = val.split('-').map(Number);
-      return new Date(y, m - 1, d);
-    }
-    // DD/MM/YYYY (es. 15/05/1996)
-    if (/^\d{2}\/\d{2}\/\d{4}$/.test(val)) {
-      const [d, m, y] = val.split('/').map(Number);
-      return new Date(y, m - 1, d);
-    }
-    // YYYY-MM-DD
-    if (/^\d{4}-\d{2}-\d{2}$/.test(val)) {
-      const [y, m, d] = val.split('-').map(Number);
+    const norm = normalizeToDDMMYYYY(val);
+    if (/^\d{2}-\d{2}-\d{4}$/.test(norm)) {
+      const [d, m, y] = norm.split('-').map(Number);
       return new Date(y, m - 1, d);
     }
     const parsed = new Date(val);
