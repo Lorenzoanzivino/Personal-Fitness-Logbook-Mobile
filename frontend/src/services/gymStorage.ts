@@ -3,6 +3,8 @@ import { Exercise, WorkoutRoutine, Workout, RoutineFolder } from '../types/worko
 import { DEFAULT_EXERCISES } from '../data/defaultExercises';
 import { DEFAULT_ROUTINES, DEFAULT_WORKOUTS } from '../data/defaultRoutines';
 
+import { STORAGE_KEY_PENDING_MUTATIONS } from './mutationQueue';
+
 export const DEFAULT_FOLDERS: RoutineFolder[] = [];
 
 const STORAGE_KEYS = {
@@ -10,6 +12,7 @@ const STORAGE_KEYS = {
   ROUTINES: '@gym_routines_v3',
   WORKOUTS: '@gym_workouts_v3',
   FOLDERS: '@gym_folders_v3',
+  PENDING_MUTATIONS: STORAGE_KEY_PENDING_MUTATIONS,
 };
 
 export const gymStorage = {
@@ -204,6 +207,7 @@ export const gymStorage = {
         STORAGE_KEYS.ROUTINES,
         STORAGE_KEYS.WORKOUTS,
         STORAGE_KEYS.FOLDERS,
+        STORAGE_KEYS.PENDING_MUTATIONS,
         '@measurements_v2',
         '@diets_v2',
         '@user_profile_v1',

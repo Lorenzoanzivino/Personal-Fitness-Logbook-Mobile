@@ -6,6 +6,7 @@ import { NavigationContainer, DarkTheme } from '@react-navigation/native';
 import { RootStackNavigator, navigationRef } from './src/navigation';
 import { Header } from './src/components';
 import { colors } from './src/theme/colors';
+import { NetworkProvider } from './src/context/NetworkContext';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { GymProvider } from './src/context/GymContext';
 import { MeasurementProvider } from './src/context/MeasurementContext';
@@ -56,15 +57,17 @@ function AppContent() {
 export default function App() {
   return (
     <SafeAreaProvider>
-      <AuthProvider>
-        <GymProvider>
-          <MeasurementProvider>
-            <DietProvider>
-              <AppContent />
-            </DietProvider>
-          </MeasurementProvider>
-        </GymProvider>
-      </AuthProvider>
+      <NetworkProvider>
+        <AuthProvider>
+          <GymProvider>
+            <MeasurementProvider>
+              <DietProvider>
+                <AppContent />
+              </DietProvider>
+            </MeasurementProvider>
+          </GymProvider>
+        </AuthProvider>
+      </NetworkProvider>
     </SafeAreaProvider>
   );
 }

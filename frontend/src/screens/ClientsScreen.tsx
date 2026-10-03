@@ -22,6 +22,8 @@ import { ToastFeedback, ToastType } from '../components/ToastFeedback';
 import { ScreenBackgroundWrapper } from '../components/ScreenBackgroundWrapper';
 import { useAuth } from '../context/AuthContext';
 import { useGym } from '../context/GymContext';
+import { useNetwork } from '../context/NetworkContext';
+import { syncService } from '../services/SyncService';
 import { ClientAssociation } from '../types/profile';
 import { ProvisionedClient } from '../types/auth';
 import * as Clipboard from 'expo-clipboard';
@@ -68,13 +70,20 @@ export const ClientsScreen: React.FC = () => {
   };
 
   // Pull-to-Refresh State & Handler
+  const { isOnline } = useNetwork();
   const [refreshing, setRefreshing] = useState(false);
 
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
-      await Promise.all([refreshProvisionedClients(), reloadGymData()]);
-      showToast('success', 'Lista atleti aggiornata!');
+      if (isOnline) {
+        await syncService.processQueue();
+        await Promise.allSettled([refreshProvisionedClients(), reloadGymData()]);
+        showToast('success', 'Lista atleti sincronizzata!');
+      } else {
+        await reloadGymData();
+        showToast('info', 'Modalità Offline: visualizzati i dati locali.');
+      }
     } catch {
       showToast('error', 'Errore durante l\'aggiornamento.');
     } finally {

@@ -13,6 +13,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { RootTabParamList, TabNavigationProp } from '../types/navigation';
 import { useGym } from '../context/GymContext';
+import { useNetwork } from '../context/NetworkContext';
+import { syncService } from '../services/SyncService';
 import { RoutineFolder, WorkoutRoutine } from '../types/workout';
 import { colors } from '../theme/colors';
 import { layout } from '../theme/spacing';
@@ -69,6 +71,7 @@ export const GymScreen: React.FC = () => {
     calculateTotalVolume,
     reloadGymData,
   } = useGym();
+  const { isOnline } = useNetwork();
 
   const [activeTab, setActiveTab] = useState<SubTab>(
     userRole === 'CLIENT' && route.params?.initialSubTab === 'exercises'
@@ -160,8 +163,17 @@ export const GymScreen: React.FC = () => {
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
-      await reloadGymData();
-      showToast('success', 'Dati sincronizzati con successo!');
+      if (isOnline) {
+        // Se online: svuota la coda PENDING e invia le modifiche al server
+        await syncService.processQueue();
+        // Esegue il PULL forzato per scaricare le ultime novità dal backend
+        await reloadGymData();
+        showToast('success', 'Dati sincronizzati con il server!');
+      } else {
+        // Se offline: ricarica i dati dalla cache locale
+        await reloadGymData();
+        showToast('info', 'Modalità Offline: visualizzati i dati locali.');
+      }
     } catch {
       showToast('error', 'Errore durante la sincronizzazione.');
     } finally {

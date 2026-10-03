@@ -5,6 +5,7 @@ import { colors } from '../theme/colors';
 import { layout } from '../theme/spacing';
 import { getActiveRouteName, navigateSafely } from '../navigation/navigationRef';
 import { useAuth } from '../context/AuthContext';
+import { useNetwork } from '../context/NetworkContext';
 import { CustomConfirmModal } from './CustomConfirmModal';
 
 const APP_LOGO = require('../../assets/logo1.png');
@@ -168,10 +169,13 @@ interface HeaderProps {
 export const Header: React.FC<HeaderProps> = ({
   title = 'MY TRAIN UP',
   subtitle = 'Personal Gym Hub',
-  connected = true,
+  connected: propConnected,
   activeRouteName: routeProp,
 }) => {
   const { logout } = useAuth();
+  const { isOnline, pendingCount } = useNetwork();
+  const isActuallyConnected = propConnected !== undefined ? propConnected && isOnline : isOnline;
+
   const [helpVisible, setHelpVisible] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [currentRoute, setCurrentRoute] = useState<string>(routeProp || 'Home');
@@ -206,63 +210,113 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   return (
-    <View style={styles.header}>
-      <Pressable
-        onPress={handlePressLogo}
-        style={({ pressed }) => [
-          styles.brandRow,
-          { opacity: pressed ? 0.75 : 1 },
-        ]}
-        accessibilityRole="button"
-        accessibilityLabel="Torna alla Home"
-      >
-        <View style={styles.logoBadge}>
-          <Image source={APP_LOGO} style={styles.logoImage} resizeMode="contain" />
-        </View>
-        <View style={styles.titleContainer}>
-          <Text style={styles.title}>{title}</Text>
-          <Text style={styles.subtitle}>{subtitle}</Text>
-        </View>
-      </Pressable>
+    <View style={styles.headerWrapper}>
+      <View style={styles.header}>
+        <Pressable
+          onPress={handlePressLogo}
+          style={({ pressed }) => [
+            styles.brandRow,
+            { opacity: pressed ? 0.75 : 1 },
+          ]}
+          accessibilityRole="button"
+          accessibilityLabel="Torna alla Home"
+        >
+          <View style={styles.logoBadge}>
+            <Image source={APP_LOGO} style={styles.logoImage} resizeMode="contain" />
+          </View>
+          <View style={styles.titleContainer}>
+            <Text style={styles.title}>{title}</Text>
+            <Text style={styles.subtitle}>{subtitle}</Text>
+          </View>
+        </Pressable>
 
-      <View style={styles.rightContainer}>
-        <View style={styles.statusBadge}>
-          <View
-            style={[
-              styles.statusDot,
-              { backgroundColor: connected ? colors.emerald : colors.danger },
+        <View style={styles.rightContainer}>
+          <View style={styles.statusBadge}>
+            <View
+              style={[
+                styles.statusDot,
+                {
+                  backgroundColor: !isActuallyConnected
+                    ? '#F59E0B'
+                    : pendingCount > 0
+                    ? colors.accent
+                    : colors.emerald,
+                },
+              ]}
+            />
+            <Text
+              style={[
+                styles.statusText,
+                !isActuallyConnected && { color: '#FCD34D' },
+                isActuallyConnected && pendingCount > 0 && { color: colors.accent },
+              ]}
+            >
+              {!isActuallyConnected
+                ? 'OFFLINE'
+                : pendingCount > 0
+                ? `SYNC (${pendingCount})`
+                : 'LIVE'}
+            </Text>
+          </View>
+
+          <Pressable
+            onPress={handleOpenHelp}
+            style={({ pressed }) => [
+              styles.helpIconBtn,
+              { opacity: pressed ? 0.7 : 1 },
             ]}
+            accessibilityRole="button"
+            accessibilityLabel="Guida e informazioni sulla schermata"
+          >
+            <Text style={styles.helpIconText}>ℹ</Text>
+          </Pressable>
+
+          <Pressable
+            onPress={() => setShowLogoutModal(true)}
+            style={({ pressed }) => [
+              styles.logoutIconBtn,
+              { opacity: pressed ? 0.7 : 1 },
+            ]}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            accessibilityRole="button"
+            accessibilityLabel="Disconnetti account"
+          >
+            <Ionicons name="log-out-outline" size={18} color={colors.danger} />
+          </Pressable>
+        </View>
+      </View>
+
+      {/* Banner Sincronizzazione / Modalità Offline */}
+      {(!isActuallyConnected || pendingCount > 0) && (
+        <View
+          style={[
+            styles.networkBanner,
+            !isActuallyConnected ? styles.networkBannerOffline : styles.networkBannerSync,
+          ]}
+        >
+          <Ionicons
+            name={!isActuallyConnected ? 'cloud-offline' : 'sync'}
+            size={13}
+            color={!isActuallyConnected ? '#F59E0B' : colors.accent}
           />
-          <Text style={styles.statusText}>
-            {connected ? 'LIVE' : 'OFFLINE'}
+          <Text
+            style={[
+              styles.networkBannerText,
+              { color: !isActuallyConnected ? '#FCD34D' : colors.accent },
+            ]}
+          >
+            {!isActuallyConnected
+              ? pendingCount > 0
+                ? `Modalità Offline • ${pendingCount} ${
+                    pendingCount === 1 ? 'modifica in sospeso' : 'modifiche in sospeso'
+                  }`
+                : 'Modalità Offline • Funzionalità locali attive'
+              : `Sincronizzazione in sospeso: ${pendingCount} ${
+                  pendingCount === 1 ? 'elemento' : 'elementi'
+                }`}
           </Text>
         </View>
-
-        <Pressable
-          onPress={handleOpenHelp}
-          style={({ pressed }) => [
-            styles.helpIconBtn,
-            { opacity: pressed ? 0.7 : 1 },
-          ]}
-          accessibilityRole="button"
-          accessibilityLabel="Guida e informazioni sulla schermata"
-        >
-          <Text style={styles.helpIconText}>ℹ</Text>
-        </Pressable>
-
-        <Pressable
-          onPress={() => setShowLogoutModal(true)}
-          style={({ pressed }) => [
-            styles.logoutIconBtn,
-            { opacity: pressed ? 0.7 : 1 },
-          ]}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          accessibilityRole="button"
-          accessibilityLabel="Disconnetti account"
-        >
-          <Ionicons name="log-out-outline" size={18} color={colors.danger} />
-        </Pressable>
-      </View>
+      )}
 
       {/* Logout Confirmation Modal */}
       <CustomConfirmModal
@@ -349,6 +403,11 @@ export const Header: React.FC<HeaderProps> = ({
 };
 
 const styles = StyleSheet.create({
+  headerWrapper: {
+    backgroundColor: colors.primary,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -356,8 +415,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     backgroundColor: colors.primary,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+  },
+  networkBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 5,
+    paddingHorizontal: 12,
+    gap: 6,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  networkBannerOffline: {
+    backgroundColor: 'rgba(245, 158, 11, 0.12)',
+  },
+  networkBannerSync: {
+    backgroundColor: 'rgba(255, 107, 0, 0.12)',
+  },
+  networkBannerText: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.3,
   },
   brandRow: {
     flexDirection: 'row',

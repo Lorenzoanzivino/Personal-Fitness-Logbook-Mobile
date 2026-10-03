@@ -12,6 +12,7 @@ import { UserProfile, UserRole, ClientAssociation } from '../types/profile';
 import { gymStorage } from '../services/gymStorage';
 import { profileService } from '../services/profileService';
 import { apiService } from '../services/api';
+import { syncService } from '../services/SyncService';
 
 interface ProgressionHistoryPoint {
   date: string;
@@ -223,6 +224,16 @@ export const GymProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   useEffect(() => {
     loadAllGymData();
+
+    // Sottoscrizione al SyncEngine per ricaricare automaticamente i dati al termine del PULL
+    const unsubscribeSync = syncService.onSyncCompleted(() => {
+      console.log('[GymContext] Evento onSyncCompleted ricevuto: ricaricamento dati da backend/cache locale...');
+      loadAllGymData();
+    });
+
+    return () => {
+      unsubscribeSync();
+    };
   }, [userProfile.id, userProfile.role, selectedClient?.id]);
 
   const loadAllGymData = async () => {

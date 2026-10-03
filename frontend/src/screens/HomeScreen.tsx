@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, RefreshControl } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { TabNavigationProp } from '../types/navigation';
 import { colors } from '../theme/colors';
@@ -13,14 +13,32 @@ import { useAuth } from '../context/AuthContext';
 import { useGym } from '../context/GymContext';
 import { useMeasurements } from '../context/MeasurementContext';
 import { useDiet } from '../context/DietContext';
+import { useNetwork } from '../context/NetworkContext';
+import { syncService } from '../services/SyncService';
 import { UserProfile } from '../types/profile';
 
 export const HomeScreen: React.FC = () => {
   const navigation = useNavigation<TabNavigationProp<'Home'>>();
   const { user } = useAuth();
-  const { workouts, calculateTotalVolume } = useGym();
-  const { measurements, latestMeasurement } = useMeasurements();
+  const { workouts, calculateTotalVolume, reloadGymData } = useGym();
+  const { measurements, latestMeasurement, reloadMeasurements } = useMeasurements();
   const { activeDiet } = useDiet();
+  const { isOnline } = useNetwork();
+  const [refreshing, setRefreshing] = useState(false);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      if (isOnline) {
+        await syncService.processQueue();
+      }
+      await Promise.allSettled([reloadGymData(), reloadMeasurements()]);
+    } catch {
+      // safe fallback
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const [profile, setProfile] = useState<UserProfile>(profileService.getCurrentProfile());
 
@@ -92,6 +110,14 @@ export const HomeScreen: React.FC = () => {
         style={styles.container}
         contentContainerStyle={styles.contentContainer}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={colors.accent}
+            colors={[colors.accent]}
+          />
+        }
       >
       {/* Header Section with User Avatar on the Right */}
       <View style={styles.heroSection}>

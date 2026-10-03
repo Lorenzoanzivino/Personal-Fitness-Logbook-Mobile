@@ -13,6 +13,8 @@ import { ToastFeedback, ToastType } from '../components/ToastFeedback';
 import { ScreenBackgroundWrapper } from '../components/ScreenBackgroundWrapper';
 import { MeasurementTrendChart } from '../components/MeasurementTrendChart';
 import { calculateDelta, MetricType } from '../utils/measurementDelta';
+import { useNetwork } from '../context/NetworkContext';
+import { syncService } from '../services/SyncService';
 
 export const MeasurementsScreen: React.FC = () => {
   const navigation = useNavigation<TabNavigationProp<'Measurements'>>();
@@ -25,6 +27,7 @@ export const MeasurementsScreen: React.FC = () => {
     reloadMeasurements,
   } = useMeasurements();
 
+  const { isOnline } = useNetwork();
   const [refreshing, setRefreshing] = useState(false);
 
   // Expanded card tracking (allow single expanded at a time, default to first)
@@ -54,12 +57,22 @@ export const MeasurementsScreen: React.FC = () => {
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
-      await reloadMeasurements();
-      setToast({
-        visible: true,
-        type: 'success',
-        message: 'Misurazioni aggiornate con successo!',
-      });
+      if (isOnline) {
+        await syncService.processQueue();
+        await reloadMeasurements();
+        setToast({
+          visible: true,
+          type: 'success',
+          message: 'Misurazioni sincronizzate con il server!',
+        });
+      } else {
+        await reloadMeasurements();
+        setToast({
+          visible: true,
+          type: 'info',
+          message: 'Modalità Offline: visualizzati i dati locali.',
+        });
+      }
     } catch {
       setToast({
         visible: true,

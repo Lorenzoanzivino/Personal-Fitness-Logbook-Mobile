@@ -18,6 +18,8 @@ import {
 } from '../types/auth';
 import { BodyMeasurement, CreateBodyMeasurementDto } from '../types/measurement';
 import { gymStorage } from './gymStorage';
+import { mutationQueue, HttpMethod } from './mutationQueue';
+import { networkStatus } from '../context/NetworkContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface ActiveOtpRecord {
@@ -97,6 +99,50 @@ class ApiService {
     path: string,
     options: RequestInit = {}
   ): Promise<ApiResponse<T>> {
+    const method = ((options.method || 'GET').toUpperCase()) as HttpMethod | 'GET';
+    const isSyncEngine = (options.headers as Record<string, string>)?.[
+      'X-Sync-Engine'
+    ] === 'true';
+
+    // =========================================================================
+    // INTERCETTORE OFFLINE-FIRST:
+    // Se la rete è offline e la chiamata non proviene dal SyncEngine:
+    // =========================================================================
+    if (!networkStatus.isOnline() && !isSyncEngine) {
+      // 1. Chiamate GET: non effettuare chiamate di rete, restituisce subito fallback
+      if (method === 'GET') {
+        console.log(`[ApiService] 📴 OFFLINE: Intercettata GET '${path}'. Restituisco fallback locale.`);
+        return {
+          success: false,
+          data: null,
+          error: {
+            code: 'OFFLINE_MODE',
+            message: 'Dispositivo in modalità offline.',
+            status: 0,
+          },
+        };
+      }
+
+      // 2. Chiamate di autenticazione: non accodare tentativi di login
+      if (path.includes('/auth/login')) {
+        return {
+          success: false,
+          data: null,
+          error: {
+            code: 'OFFLINE_AUTH',
+            message: 'Connessione a internet richiesta per il login.',
+            status: 0,
+          },
+        };
+      }
+
+      // 3. Mutazioni (POST, PUT, PATCH, DELETE):
+      // A) Salva in coda PENDING
+      // B) Aggiorna local storage
+      // C) Restituisce fake response 200 formattata correttamente
+      return this.handleOfflineMutation<T>(method as HttpMethod, path, options.body);
+    }
+
     const url = getApiEndpoint(path);
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), API_CONFIG.timeoutMs);
@@ -141,6 +187,9 @@ class ApiService {
       if (contentType && contentType.includes('application/json')) {
         const json = await response.json();
         if (typeof json?.success === 'boolean') {
+          if (!response.ok && json.error) {
+            json.error.status = response.status;
+          }
           return json as ApiResponse<T>;
         }
         return {
@@ -152,6 +201,7 @@ class ApiService {
                 code: json?.code || (typeof json?.error === 'string' ? json.error : `HTTP_${response.status}`),
                 message: json?.message || `Richiesta fallita con codice ${response.status}`,
                 details: json,
+                status: response.status,
               },
         };
       }
@@ -163,6 +213,7 @@ class ApiService {
           error: {
             code: `HTTP_${response.status}`,
             message: `Richiesta fallita con codice ${response.status}`,
+            status: response.status,
           },
         };
       }
@@ -181,38 +232,224 @@ class ApiService {
         error: {
           code: 'NETWORK_ERROR',
           message,
+          status: 0,
         },
       };
     }
   }
 
-  async get<T>(path: string): Promise<ApiResponse<T>> {
-    return this.request<T>(path, { method: 'GET' });
+  private async handleOfflineMutation<T>(
+    method: HttpMethod,
+    path: string,
+    rawBody?: any
+  ): Promise<ApiResponse<T>> {
+    let parsedBody: any = rawBody;
+    if (typeof rawBody === 'string') {
+      try {
+        parsedBody = JSON.parse(rawBody);
+      } catch {
+        parsedBody = rawBody;
+      }
+    }
+
+    let entityType: 'routine' | 'workout' | 'folder' | 'measurement' | 'generic' = 'generic';
+    let description = `${method} ${path}`;
+
+    if (path.includes('/workouts')) {
+      entityType = 'workout';
+      description = `Salvataggio workout "${parsedBody?.name || 'Sessione'}"`;
+    } else if (path.includes('/routines')) {
+      entityType = 'routine';
+      description = `${method === 'DELETE' ? 'Eliminazione' : 'Salvataggio'} scheda "${parsedBody?.name || 'Scheda'}"`;
+    } else if (path.includes('/folders')) {
+      entityType = 'folder';
+      description = `${method === 'DELETE' ? 'Eliminazione' : 'Creazione'} cartella "${parsedBody?.name || 'Cartella'}"`;
+    } else if (path.includes('/measurements')) {
+      entityType = 'measurement';
+      description = `${method === 'DELETE' ? 'Eliminazione' : 'Salvataggio'} misurazione corporea`;
+    }
+
+    console.log(`[ApiService] 📴 OFFLINE: Accodo mutazione [${method}] ${path} (${description})`);
+
+    // A) Salva nella coda delle mutazioni
+    await mutationQueue.enqueue({
+      method,
+      endpoint: path,
+      payload: parsedBody,
+      entityType,
+      description,
+    });
+
+    // B) Aggiorna il contatore pendingCount nel NetworkContext
+    networkStatus.notifyQueueChanged();
+
+    // C) Genera fake response 200 e aggiorna la cache locale per riflettere subito le modifiche
+    const fakeData = await this.generateFakeDataAndSyncStorage<T>(method, path, parsedBody);
+
+    return {
+      success: true,
+      data: fakeData,
+      error: null,
+    };
   }
 
-  async post<T>(path: string, body?: unknown): Promise<ApiResponse<T>> {
+  private async generateFakeDataAndSyncStorage<T>(
+    method: HttpMethod,
+    path: string,
+    parsedBody: any
+  ): Promise<T> {
+    const now = new Date().toISOString();
+
+    // --- WORKOUTS ---
+    if (path.startsWith('/api/v1/workouts')) {
+      if (method === 'POST') {
+        const fakeWorkout = {
+          ...parsedBody,
+          id: parsedBody?.id || Date.now(),
+          created_at: parsedBody?.created_at || now,
+          updated_at: now,
+        };
+        try {
+          const current = await gymStorage.loadWorkouts();
+          const updated = [fakeWorkout, ...current.filter((w: any) => w.id !== fakeWorkout.id)];
+          await gymStorage.saveWorkouts(updated);
+        } catch (e) {
+          console.warn('[ApiService] Errore sync locale workout offline:', e);
+        }
+        return fakeWorkout as unknown as T;
+      }
+      if (method === 'DELETE') {
+        const id = Number(path.split('/').pop());
+        try {
+          const current = await gymStorage.loadWorkouts();
+          await gymStorage.saveWorkouts(current.filter((w: any) => w.id !== id));
+        } catch {}
+        return { id, deleted: true } as unknown as T;
+      }
+    }
+
+    // --- ROUTINES ---
+    if (path.startsWith('/api/v1/routines')) {
+      if (method === 'POST') {
+        const fakeRoutine = {
+          ...parsedBody,
+          id: parsedBody?.id || Date.now(),
+          created_at: parsedBody?.created_at || now,
+          updated_at: now,
+        };
+        try {
+          const current = await gymStorage.loadRoutines();
+          const updated = [fakeRoutine, ...current.filter((r: any) => r.id !== fakeRoutine.id)];
+          await gymStorage.saveRoutines(updated);
+        } catch (e) {
+          console.warn('[ApiService] Errore sync locale routine offline:', e);
+        }
+        return fakeRoutine as unknown as T;
+      }
+      if (method === 'PUT') {
+        const id = Number(path.split('/').pop());
+        let updatedRoutine: any = null;
+        try {
+          const current = await gymStorage.loadRoutines();
+          const updated = current.map((r: any) => {
+            if (r.id === id) {
+              updatedRoutine = { ...r, ...parsedBody, updated_at: now };
+              return updatedRoutine;
+            }
+            return r;
+          });
+          await gymStorage.saveRoutines(updated);
+        } catch {}
+        return (updatedRoutine || { id, ...parsedBody, updated_at: now }) as unknown as T;
+      }
+      if (method === 'DELETE') {
+        const id = Number(path.split('/').pop());
+        try {
+          const current = await gymStorage.loadRoutines();
+          await gymStorage.saveRoutines(current.filter((r: any) => r.id !== id));
+        } catch {}
+        return { id, deleted: true } as unknown as T;
+      }
+    }
+
+    // --- FOLDERS ---
+    if (path.startsWith('/api/v1/folders')) {
+      if (method === 'POST') {
+        const fakeFolder = {
+          id: parsedBody?.id || `folder-${Date.now()}`,
+          name: parsedBody?.name || 'Nuova Cartella',
+          owner_id: parsedBody?.owner_id || null,
+          created_at: now,
+        };
+        try {
+          const current = await gymStorage.loadFolders();
+          await gymStorage.saveFolders([...current, fakeFolder]);
+        } catch {}
+        return fakeFolder as unknown as T;
+      }
+      if (method === 'DELETE') {
+        const id = path.split('/').pop() || '';
+        try {
+          const current = await gymStorage.loadFolders();
+          await gymStorage.saveFolders(current.filter((f: any) => f.id !== id));
+        } catch {}
+        return { id, deleted: true } as unknown as T;
+      }
+    }
+
+    // --- MEASUREMENTS ---
+    if (path.startsWith('/api/v1/measurements')) {
+      if (method === 'POST') {
+        return {
+          ...parsedBody,
+          id: Date.now(),
+          created_at: now,
+        } as unknown as T;
+      }
+      if (method === 'PUT') {
+        const id = Number(path.split('/').pop());
+        return { id, ...parsedBody, updated_at: now } as unknown as T;
+      }
+      if (method === 'DELETE') {
+        const id = Number(path.split('/').pop());
+        return { id, deleted: true } as unknown as T;
+      }
+    }
+
+    // Default fallback
+    return (parsedBody || { success: true }) as unknown as T;
+  }
+
+  async get<T>(path: string, options: RequestInit = {}): Promise<ApiResponse<T>> {
+    return this.request<T>(path, { ...options, method: 'GET' });
+  }
+
+  async post<T>(path: string, body?: unknown, options: RequestInit = {}): Promise<ApiResponse<T>> {
     return this.request<T>(path, {
+      ...options,
       method: 'POST',
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
   }
 
-  async put<T>(path: string, body?: unknown): Promise<ApiResponse<T>> {
+  async put<T>(path: string, body?: unknown, options: RequestInit = {}): Promise<ApiResponse<T>> {
     return this.request<T>(path, {
+      ...options,
       method: 'PUT',
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
   }
 
-  async patch<T>(path: string, body?: unknown): Promise<ApiResponse<T>> {
+  async patch<T>(path: string, body?: unknown, options: RequestInit = {}): Promise<ApiResponse<T>> {
     return this.request<T>(path, {
+      ...options,
       method: 'PATCH',
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
   }
 
-  async delete<T>(path: string): Promise<ApiResponse<T>> {
-    return this.request<T>(path, { method: 'DELETE' });
+  async delete<T>(path: string, options: RequestInit = {}): Promise<ApiResponse<T>> {
+    return this.request<T>(path, { ...options, method: 'DELETE' });
   }
 
   // ==========================================
