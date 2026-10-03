@@ -70,7 +70,8 @@ docs/.IONOS_PRODUCTION_SPEC.md
 *.db
 *.sql.gz
 postgres-data/
-data/
+/data/
+!frontend/src/data/
 
 # ==========================================
 # LOGS, DEBUG & CACHES
